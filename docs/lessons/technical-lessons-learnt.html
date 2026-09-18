@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1" name="viewport"/>
+    <title>Technical Lessons Learnt – repolens</title>
+    <style>
+        :root { --bg:#070b14; --panel:#0b1324; --card:#0f1a30; --line:#1e2d4d; --text:#e6edf7; --muted:#9fb0cc; --brand:#4f8cff; }
+        * { box-sizing:border-box; }
+        body { margin:0; background:var(--bg); color:var(--text); font:15px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif; }
+        a { color:var(--brand); text-decoration:none; } a:hover { text-decoration:underline; }
+        code { font-family:"JetBrains Mono",ui-monospace,monospace; font-size:.88em; background:#13203b; padding:1px 5px; border-radius:4px; }
+        header { display:flex; justify-content:space-between; align-items:center; padding:12px 24px; border-bottom:1px solid var(--line); background:var(--panel); }
+        header .logo { font-weight:700; } header .sub { font-size:12px; color:var(--muted); }
+        .layout { display:flex; min-height:calc(100vh - 110px); }
+        #sidebar { width:260px; flex:none; padding:16px 12px; border-right:1px solid var(--line); background:var(--panel); position:sticky; top:0; align-self:flex-start; max-height:100vh; overflow-y:auto; }
+        #sidebar a { display:block; padding:5px 10px; border-radius:6px; color:var(--text); font-size:14px; }
+        #sidebar a:hover { background:#13203b; text-decoration:none; }
+        .nav-group { margin-bottom:18px; } .nav-group-label { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); padding:0 10px 6px; }
+        .content { flex:1; min-width:0; padding:28px 40px; max-width:1200px; }
+        h1 { margin-top:0; } h2 { border-bottom:1px solid var(--line); padding-bottom:6px; }
+        .callout { border-left:4px solid var(--brand); background:var(--card); padding:12px 16px; border-radius:0 8px 8px 0; margin:16px 0; }
+        .callout.danger { border-left-color:#ef4444; }
+        .badge { display:inline-block; font-size:11px; font-weight:600; padding:1px 8px; border-radius:999px; }
+        .badge-red { background:#3b1219; color:#fca5a5; } .badge-orange { background:#3b2412; color:#fdba74; }
+        .badge-yellow { background:#3a3212; color:#fde68a; } .badge-blue { background:#132a4a; color:#93c5fd; }
+        .badge-gray { background:#1f2937; color:#d1d5db; } .badge-purple { background:#2a1a4a; color:#c4b5fd; }
+        .stat-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px; margin:18px 0; }
+        .stat-card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px; text-align:center; }
+        .stat-num { font-size:28px; font-weight:700; color:var(--brand); } .stat-label { font-size:12px; color:var(--muted); }
+        footer { border-top:1px solid var(--line); padding:14px 24px; font-size:13px; color:var(--muted); }
+        select, button { background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:6px 10px; }
+        @media (max-width:800px) { .layout { display:block; } #sidebar { width:auto; position:static; max-height:none; } .content { padding:20px 16px; } }
+        .tll-filters { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:16px 0 20px; }
+        .tll-filters input[type=search] { flex:1 1 260px; padding:8px 12px; border-radius:8px; border:1px solid #1e2d4d; background:#0b1324; color:inherit; }
+        .tll-filters label { font-size:13px; opacity:.85; display:inline-flex; gap:4px; align-items:center; }
+        .lesson { border:1px solid #1e2d4d; border-radius:10px; margin:10px 0; background:var(--card,#0f1a30); }
+        .lesson > summary { cursor:pointer; padding:10px 14px; list-style:none; display:flex; gap:10px; align-items:baseline; }
+        .lesson > summary::-webkit-details-marker { display:none; }
+        .lesson .lid { font-family:'JetBrains Mono',monospace; font-size:12px; opacity:.75; min-width:62px; }
+        .lesson .lbody { padding:0 16px 14px; }
+        .lesson dl { display:grid; grid-template-columns:130px 1fr; gap:6px 14px; margin:0; }
+        .lesson dt { font-weight:600; opacity:.8; font-size:13px; }
+        .lesson dd { margin:0; font-size:14px; line-height:1.5; }
+        .lesson code, .lesson pre { font-size:12.5px; }
+        .lesson pre { background:#0b1324; padding:8px 10px; border-radius:6px; white-space:pre-wrap; word-break:break-word; margin:4px 0; }
+        .stack { font-size:11px; padding:1px 6px; border-radius:999px; border:1px solid #2a3b62; opacity:.8; margin-left:4px; }
+        .cat-head { margin-top:34px; }
+        .cat-head small { opacity:.7; font-weight:400; }
+        @media (max-width:700px){ .lesson dl { grid-template-columns:1fr; } }
+    </style>
+</head>
+<body>
+<header>
+    <div class="header-brand">
+        <div>
+            <div class="logo">repolens</div>
+            <div class="sub">Technical Lessons Learnt</div>
+        </div>
+    </div>
+</header>
+<div class="layout">
+    <nav id="sidebar">
+        <div class="nav-group">
+            <div class="nav-group-label">Catalogue</div>
+            <a href="technical-lessons-learnt.html">📚 Technical Lessons Learnt</a>
+            <a href="README.md">📄 README</a>
+            <a href="rules/README.md">🧾 Rule packs (Markdown)</a>
+        </div>
+        <div class="nav-group" id="cat-nav">
+            <div class="nav-group-label">Categories</div>
+        </div>
+        <div class="nav-group">
+            <div class="nav-group-label">Data</div>
+            <a href="technical-lessons-learnt.json">⬇️ Catalogue JSON</a>
+        </div>
+    </nav>
+    <main class="content">
+        <h1>Technical Lessons Learnt</h1>
+        <p>Stack-level traps hit while building a multi-tenant Next.js / TypeScript front end on a FastAPI / Python
+            back end with PostgreSQL and MongoDB. Each lesson gives the <strong>symptom</strong> that shows up, the
+            <strong>root cause</strong>, how it was <strong>resolved</strong>, how to <strong>prevent</strong> it, and a
+            <strong>detection</strong> recipe you can automate. Most of these came from incidents in a production multi-tenant codebase's
+            commit history, docs and task records; others are well-known traps from vendor
+            documentation and OWASP. The evidence and sources fields tell you which.</p>
+
+        <div class="callout">
+            <strong>Machine-readable.</strong> Everything on this page is rendered from
+            <a href="technical-lessons-learnt.json"><code>technical-lessons-learnt.json</code></a>. That file is the
+            canonical catalogue: edit it, not this page. The Markdown rule packs in
+            <a href="rules/README.md"><code>rules/</code></a> are generated from it with
+            <code>python3 docs/lessons/export_lessons_learnt.py --out docs/lessons/rules</code>.
+            Serve this folder over HTTP to view the page (<code>python3 -m http.server -d docs/lessons</code>);
+            opened from <code>file://</code>, browsers block the JSON fetch.
+            Detection regexes are starting points; every one produces false positives, so tune it for your repository
+            before you gate on it.
+        </div>
+
+        <div class="stat-grid" id="stats"></div>
+
+        <div class="tll-filters">
+            <input id="q" placeholder="Search title, symptom, cause, fix…" type="search"/>
+            <span id="sevs"></span>
+            <select id="group">
+                <option value="">All stacks</option>
+                <option value="frontend">Frontend</option>
+                <option value="python">Python</option>
+                <option value="database">Database</option>
+                <option value="cross-cutting">Security</option>
+                <option value="tooling">Tooling &amp; process</option>
+            </select>
+            <button id="expand" type="button">Expand all</button>
+            <span id="shown" style="font-size:13px;opacity:.75"></span>
+        </div>
+
+        <div id="catalogue"><p>Loading catalogue…</p></div>
+        <noscript><p>This page needs JavaScript. Read <a href="technical-lessons-learnt.json">the JSON</a> directly instead.</p></noscript>
+    </main>
+</div>
+<footer>
+    <p>repolens — Technical Lessons Learnt · <span id="stamp"></span></p>
+</footer>
+<script>
+(function () {
+    const SEV_BADGE = {critical: 'badge-red', high: 'badge-orange', medium: 'badge-yellow', low: 'badge-blue', info: 'badge-gray'};
+    const esc = s => String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+    // `code` spans in prose → <code>; everything else escaped.
+    const md = s => esc(s).replace(/`([^`]+)`/g, '<code>$1</code>');
+    const link = s => /^https?:\/\//.test(s) ? `<a href="${esc(s)}" rel="noopener" target="_blank">${esc(s)}</a>` : md(s);
+    let DATA, openAll = false;
+
+    fetch('technical-lessons-learnt.json').then(r => r.json()).then(d => {
+        DATA = d;
+        document.getElementById('stamp').textContent = `as of ${d.as_of} · content ${d.content_hash}`;
+        document.getElementById('sevs').innerHTML = d.severity_levels.filter(s => s !== 'info').map(s =>
+            `<label><input type="checkbox" value="${s}" checked> <span class="badge ${SEV_BADGE[s]}">${s}</span></label>`).join(' ');
+        const bySev = s => d.lessons.filter(l => l.severity === s).length;
+        document.getElementById('stats').innerHTML =
+            `<div class="stat-card"><div class="stat-num">${d.lessons.length}</div><div class="stat-label">Lessons</div></div>` +
+            `<div class="stat-card"><div class="stat-num">${d.categories.length}</div><div class="stat-label">Categories</div></div>` +
+            ['critical', 'high', 'medium', 'low'].map(s =>
+                `<div class="stat-card"><div class="stat-num">${bySev(s)}</div><div class="stat-label">${s}</div></div>`).join('');
+        const nav = document.getElementById('cat-nav');
+        d.categories.forEach(c => nav.insertAdjacentHTML('beforeend',
+            `<a href="#${c.id}">${esc(c.title)} <small style="opacity:.6">(${c.count})</small></a>`));
+        ['q', 'group'].forEach(id => document.getElementById(id).addEventListener('input', render));
+        document.getElementById('sevs').addEventListener('change', render);
+        document.getElementById('expand').addEventListener('click', e => {
+            openAll = !openAll;
+            e.target.textContent = openAll ? 'Collapse all' : 'Expand all';
+            document.querySelectorAll('details.lesson').forEach(x => x.open = openAll);
+        });
+        render();
+        if (location.hash) document.getElementById(location.hash.slice(1))?.scrollIntoView();
+    }).catch(err => {
+        document.getElementById('catalogue').innerHTML =
+            `<div class="callout danger">Could not load the catalogue JSON: ${esc(err)}</div>`;
+    });
+
+    function lessonHtml(l) {
+        const det = l.detection.map(x => `<div><span class="badge badge-purple">${esc(x.kind)}</span><pre>${esc(x.recipe)}</pre></div>`).join('');
+        const row = (k, v) => v ? `<dt>${k}</dt><dd>${v}</dd>` : '';
+        return `<details class="lesson" id="${l.id}"${openAll ? ' open' : ''}>
+            <summary><span class="lid">${l.id}</span><span class="badge ${SEV_BADGE[l.severity]}">${l.severity}</span>
+            <span>${md(l.title)}${l.stacks.map(s => `<span class="stack">${esc(s)}</span>`).join('')}</span></summary>
+            <div class="lbody"><dl>
+            ${row('Symptom', md(l.symptom))}${row('Root cause', md(l.root_cause))}
+            ${row('Resolution', md(l.resolution))}${row('Prevention', md(l.prevention))}
+            ${row('Detection', det)}
+            ${row('Evidence', l.evidence.map(md).join('<br>'))}
+            ${row('Sources', l.sources.map(link).join('<br>'))}
+            </dl></div></details>`;
+    }
+
+    function render() {
+        const q = document.getElementById('q').value.trim().toLowerCase();
+        const group = document.getElementById('group').value;
+        const sevs = new Set([...document.querySelectorAll('#sevs input:checked')].map(i => i.value));
+        let shown = 0, html = '';
+        DATA.categories.forEach(c => {
+            if (group && c.group !== group) return;
+            const ls = DATA.lessons.filter(l => l.category === c.id && sevs.has(l.severity) &&
+                (!q || JSON.stringify(l).toLowerCase().includes(q)));
+            if (!ls.length) return;
+            shown += ls.length;
+            html += `<h2 class="cat-head" id="${c.id}">${esc(c.title)} <small>· ${ls.length} · ${esc(c.summary)}</small></h2>` +
+                ls.map(lessonHtml).join('');
+        });
+        document.getElementById('catalogue').innerHTML = html || '<p>No lessons match.</p>';
+        document.getElementById('shown').textContent = `${shown} shown`;
+    }
+})();
+</script>
+</body>
+</html>

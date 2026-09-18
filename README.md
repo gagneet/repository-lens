@@ -213,6 +213,7 @@ runtime requirement for the project’s own tests.
 
 - [docs/documenting.md](docs/documenting.md) — documenting and debugging an undocumented application: generated OpenAPI, schema and maps, proposed markers, JSDoc and Function Lens ids
 - [docs/impact.md](docs/impact.md) — lower-level graph and query reference
+- [docs/lessons/README.md](docs/lessons/README.md) — technical lessons learnt: 260 stack-level traps with detection recipes, as JSON, a browsable page and Markdown rule packs
 - [docs/api/README.md](docs/api/README.md) — Swagger/OpenAPI/Postman workflow
 - [docs/plugins.md](docs/plugins.md) — extractor extension contract
 - [docs/roadmap.md](docs/roadmap.md) — implemented scope, open gaps and priorities
