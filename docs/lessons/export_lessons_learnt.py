@@ -3,7 +3,8 @@
 
 The canonical catalogue is ``technical-lessons-learnt.json`` next to this script; the
 script only READS it. It writes one Markdown file per category (plus an index) into
-``--out``. The committed copy under ``docs/lessons/rules/`` is its output: edit the JSON,
+``--out``, and refreshes ``technical-lessons-learnt.js`` next to the catalogue: the same data
+as a script, so ``index.html`` works when opened straight from disk (``file://`` blocks fetch). The committed copy under ``docs/lessons/rules/`` is its output: edit the JSON,
 then re-run the first command below. Standard library only.
 
     python3 docs/lessons/export_lessons_learnt.py --out docs/lessons/rules
@@ -14,6 +15,7 @@ import json
 from pathlib import Path
 
 CATALOGUE = Path(__file__).resolve().with_name("technical-lessons-learnt.json")
+PAGE_DATA = CATALOGUE.with_suffix(".js")
 SEVERITIES = ["critical", "high", "medium", "low", "info"]
 
 
@@ -47,6 +49,8 @@ def main() -> int:
     args = ap.parse_args()
 
     data = json.loads(CATALOGUE.read_text())
+    # `</` escaped so no string in the catalogue can close the <script> element.
+    PAGE_DATA.write_text("window.LESSONS = " + json.dumps(data, ensure_ascii=False).replace("</", "<\\/") + ";\n")
     floor = SEVERITIES.index(args.min_severity)
     known = {c["id"] for c in data["categories"]}
     unknown = set(args.category or []) - known

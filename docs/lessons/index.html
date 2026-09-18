@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1" name="viewport"/>
+<title>Technical Lessons Learnt</title>
+<style>
+:root {
+  --bg:#f7f8fa; --panel:#fff; --card:#fff; --line:#e2e6ee; --text:#1a2233; --muted:#5c6880; --brand:#2f6fe0; --code:#eef1f6;
+  --red-bg:#fde8e8; --red:#b42323; --orange-bg:#fdeede; --orange:#a4520d; --yellow-bg:#fbf3d4; --yellow:#7d6208;
+  --blue-bg:#e3eefc; --blue:#1d5bb8; --gray-bg:#eceef2; --gray:#4b5565; --purple-bg:#eee8fb; --purple:#5b3fb0;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg:#070b14; --panel:#0b1324; --card:#0f1a30; --line:#1e2d4d; --text:#e6edf7; --muted:#9fb0cc; --brand:#6a9dff; --code:#13203b;
+  --red-bg:#3b1219; --red:#fca5a5; --orange-bg:#3b2412; --orange:#fdba74; --yellow-bg:#3a3212; --yellow:#fde68a;
+  --blue-bg:#132a4a; --blue:#93c5fd; --gray-bg:#1f2937; --gray:#d1d5db; --purple-bg:#2a1a4a; --purple:#c4b5fd;
+} }
+:root[data-theme="dark"] {
+  --bg:#070b14; --panel:#0b1324; --card:#0f1a30; --line:#1e2d4d; --text:#e6edf7; --muted:#9fb0cc; --brand:#6a9dff; --code:#13203b;
+  --red-bg:#3b1219; --red:#fca5a5; --orange-bg:#3b2412; --orange:#fdba74; --yellow-bg:#3a3212; --yellow:#fde68a;
+  --blue-bg:#132a4a; --blue:#93c5fd; --gray-bg:#1f2937; --gray:#d1d5db; --purple-bg:#2a1a4a; --purple:#c4b5fd;
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:15px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif; }
+a { color:var(--brand); text-decoration:none; } a:hover { text-decoration:underline; }
+code, pre { font-family:ui-monospace,"JetBrains Mono",Menlo,monospace; font-size:.86em; background:var(--code); border-radius:4px; }
+code { padding:1px 5px; overflow-wrap:anywhere; }
+pre { padding:8px 10px; white-space:pre-wrap; word-break:break-word; margin:4px 0 8px; }
+header { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:10px 20px; border-bottom:1px solid var(--line); background:var(--panel); position:sticky; top:0; z-index:2; }
+header .logo { font-weight:700; } header .sub { font-size:12px; color:var(--muted); }
+header button { font-size:13px; }
+.layout { display:flex; }
+#sidebar { width:270px; flex:none; padding:14px 10px 40px; border-right:1px solid var(--line); background:var(--panel); position:sticky; top:53px; height:calc(100vh - 53px); overflow-y:auto; }
+#sidebar a { display:flex; justify-content:space-between; padding:4px 10px; border-radius:6px; color:var(--text); font-size:14px; }
+#sidebar a:hover { background:var(--code); text-decoration:none; }
+#sidebar a.active { background:var(--blue-bg); color:var(--blue); font-weight:600; }
+#sidebar a small { color:var(--muted); }
+.nav-label { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); padding:14px 10px 4px; }
+main { flex:1; min-width:0; padding:28px 40px 60px; max-width:1100px; }
+h1 { margin:0 0 6px; font-size:28px; } h2 { border-bottom:1px solid var(--line); padding-bottom:6px; margin-top:34px; }
+.lead { color:var(--muted); margin-top:0; }
+.callout { border-left:4px solid var(--brand); background:var(--card); padding:10px 16px; border-radius:0 8px 8px 0; margin:16px 0; }
+.badge { display:inline-block; font-size:11px; font-weight:600; padding:1px 8px; border-radius:999px; white-space:nowrap; }
+.sev-critical { background:var(--red-bg); color:var(--red); } .sev-high { background:var(--orange-bg); color:var(--orange); }
+.sev-medium { background:var(--yellow-bg); color:var(--yellow); } .sev-low { background:var(--blue-bg); color:var(--blue); }
+.sev-info { background:var(--gray-bg); color:var(--gray); } .kind { background:var(--purple-bg); color:var(--purple); }
+.stack { font-size:11px; padding:0 7px; border-radius:999px; border:1px solid var(--line); color:var(--muted); margin-left:4px; white-space:nowrap; }
+.stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:10px; margin:18px 0; }
+.stat { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px; text-align:center; }
+.stat b { display:block; font-size:26px; color:var(--brand); } .stat span { font-size:12px; color:var(--muted); }
+.cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:12px; }
+.card { display:block; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px 14px; color:var(--text); }
+.card:hover { border-color:var(--brand); text-decoration:none; }
+.card h3 { margin:0 0 4px; font-size:15px; display:flex; justify-content:space-between; gap:8px; }
+.card p { margin:0 0 8px; font-size:13px; color:var(--muted); }
+.bar { display:flex; height:6px; border-radius:3px; overflow:hidden; background:var(--gray-bg); }
+.bar i.sev-critical { background:var(--red); } .bar i.sev-high { background:var(--orange); }
+.bar i.sev-medium { background:var(--yellow); } .bar i.sev-low { background:var(--blue); } .bar i.sev-info { background:var(--gray); }
+table { border-collapse:collapse; width:100%; font-size:14px; margin:12px 0; }
+td, th { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+td:first-child { font-family:ui-monospace,monospace; font-size:12.5px; white-space:nowrap; }
+.filters { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:16px 0; }
+.filters input[type=search] { flex:1 1 260px; padding:8px 12px; border-radius:8px; border:1px solid var(--line); background:var(--panel); color:inherit; font:inherit; }
+.filters label { font-size:13px; display:inline-flex; gap:4px; align-items:center; }
+select, button { background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:5px 10px; font:inherit; font-size:14px; cursor:pointer; }
+.lesson { border:1px solid var(--line); border-radius:10px; margin:10px 0; background:var(--card); scroll-margin-top:70px; }
+.lesson > summary { cursor:pointer; padding:10px 14px; list-style:none; display:flex; gap:10px; align-items:baseline; }
+.lesson > summary > span:last-child { flex:1 1 0; min-width:0; overflow-wrap:anywhere; }
+.lesson > summary::-webkit-details-marker { display:none; }
+.lesson > summary::before { content:"▸"; color:var(--muted); } .lesson[open] > summary::before { content:"▾"; }
+.lesson:target { border-color:var(--brand); box-shadow:0 0 0 2px var(--blue-bg); }
+.lid { font-family:ui-monospace,monospace; font-size:12px; color:var(--muted); min-width:58px; }
+.lbody { padding:0 16px 14px; }
+.lbody dl { display:grid; grid-template-columns:120px minmax(0,1fr); gap:8px 14px; margin:0; }
+.lbody dt { font-weight:600; color:var(--muted); font-size:13px; } .lbody dd { margin:0; font-size:14px; min-width:0; overflow-wrap:anywhere; }
+.lbody .permalink { font-size:12px; float:right; }
+.pager { display:flex; justify-content:space-between; gap:12px; margin-top:30px; font-size:14px; }
+footer { color:var(--muted); font-size:13px; margin-top:40px; }
+#menu { display:none; }
+@media (max-width:820px) {
+  header { padding:10px 16px; } #menu { display:inline-block; }
+  .layout { display:block; } #sidebar { display:none; width:auto; position:static; height:auto; border-right:0; border-bottom:1px solid var(--line); }
+  body.nav-open #sidebar { display:block; }
+  main { padding:20px 16px 40px; } .lbody dl { grid-template-columns:minmax(0,1fr); } table { display:block; overflow-x:auto; } .lbody dt { margin-top:6px; }
+}
+</style>
+</head>
+<body>
+<header>
+  <div><div class="logo">Technical Lessons Learnt</div><div class="sub" id="stamp"></div></div>
+  <div><button id="menu" type="button">Menu</button> <button id="theme" type="button" title="Toggle light/dark">◐</button></div>
+</header>
+<div class="layout">
+  <nav id="sidebar"></nav>
+  <main id="view"><p>Loading…</p></main>
+</div>
+<noscript><p style="padding:20px">This page needs JavaScript. Read <a href="rules/README.md">the Markdown rule packs</a> instead.</p></noscript>
+<script src="technical-lessons-learnt.js"></script>
+<script>
+(function () {
+  const view = document.getElementById('view');
+  const D = window.LESSONS;
+  if (!D) {
+    view.innerHTML = '<div class="callout">Could not load <code>technical-lessons-learnt.js</code>. Regenerate it with ' +
+      '<code>python3 docs/lessons/export_lessons_learnt.py --out docs/lessons/rules</code>.</div>';
+    return;
+  }
+  const GROUPS = {frontend: 'Frontend', python: 'Python', database: 'Database', 'cross-cutting': 'Security', tooling: 'Tooling & process'};
+  const SEVS = D.severity_levels;
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+  const md = s => esc(s).replace(/`([^`]+)`/g, '<code>$1</code>');
+  const link = s => /^https?:\/\//.test(s) ? `<a href="${esc(s)}" rel="noopener" target="_blank">${esc(s)}</a>` : md(s);
+  const sev = s => `<span class="badge sev-${s}">${s}</span>`;
+  const byCat = {};
+  D.lessons.forEach(l => (byCat[l.category] = byCat[l.category] || []).push(l));
+  const cats = D.categories.filter(c => byCat[c.id]);
+  const catOf = {}; D.lessons.forEach(l => catOf[l.id] = l.category);
+  const count = (ls, s) => ls.filter(l => l.severity === s).length;
+  const bar = ls => `<div class="bar">${SEVS.map(s => count(ls, s) ?
+      `<i class="sev-${s}" style="width:${100 * count(ls, s) / ls.length}%" title="${count(ls, s)} ${s}"></i>` : '').join('')}</div>`;
+  const stats = ls => `<div class="stats">${SEVS.filter(s => count(ls, s)).map(s =>
+      `<div class="stat"><b>${count(ls, s)}</b><span>${s}</span></div>`).join('')}</div>`;
+
+  document.getElementById('stamp').textContent = `${D.lessons.length} lessons · as of ${D.as_of} · content ${D.content_hash}`;
+
+  // Sidebar
+  let nav = `<a href="#/">Overview</a><a href="#/all">Search all lessons <small>${D.lessons.length}</small></a>`;
+  Object.entries(GROUPS).forEach(([g, name]) => {
+    const cs = cats.filter(c => c.group === g);
+    if (!cs.length) return;
+    nav += `<div class="nav-label">${esc(name)}</div>` +
+      cs.map(c => `<a href="#/c/${c.id}">${esc(c.title)} <small>${byCat[c.id].length}</small></a>`).join('');
+  });
+  nav += `<div class="nav-label">Files</div><a href="README.md">README.md</a><a href="rules/README.md">Rule packs (Markdown)</a>` +
+    `<a href="technical-lessons-learnt.json">Catalogue JSON</a>`;
+  document.getElementById('sidebar').innerHTML = nav;
+
+  function lessonHtml(l, open) {
+    const row = (k, v) => v ? `<dt>${k}</dt><dd>${v}</dd>` : '';
+    const det = l.detection.map(x => `<div><span class="badge kind">${esc(x.kind)}</span><pre>${esc(x.recipe)}</pre></div>`).join('');
+    return `<details class="lesson" id="${l.id}"${open ? ' open' : ''}>
+      <summary><span class="lid">${l.id}</span>${sev(l.severity)}<span>${md(l.title)}${l.stacks.map(s => `<span class="stack">${esc(s)}</span>`).join('')}</span></summary>
+      <div class="lbody"><a class="permalink" href="#/l/${l.id}">link</a><dl>
+      ${row('Symptom', md(l.symptom))}${row('Root cause', md(l.root_cause))}
+      ${row('Resolution', md(l.resolution))}${row('Prevention', md(l.prevention))}
+      ${row('Detection', det)}${row('Evidence', l.evidence.map(md).join('<br>'))}
+      ${row('Sources', l.sources.map(link).join('<br>'))}</dl></div></details>`;
+  }
+
+  function overview() {
+    const groups = Object.entries(GROUPS).map(([g, name]) => {
+      const cs = cats.filter(c => c.group === g);
+      return cs.length ? `<h2>${esc(name)}</h2><div class="cards">${cs.map(c => `<a class="card" href="#/c/${c.id}">
+        <h3><span>${esc(c.title)}</span><small>${byCat[c.id].length}</small></h3><p>${md(c.summary)}</p>${bar(byCat[c.id])}</a>`).join('')}</div>` : '';
+    }).join('');
+    view.innerHTML = `<h1>Technical Lessons Learnt</h1>
+      <p class="lead">${esc(D.title.replace(/^Technical Lessons Learnt\s*—\s*/, ''))}</p>
+      <p>Stack-level traps and how to avoid them. Each lesson gives the <strong>symptom</strong> you see, the
+      <strong>root cause</strong>, how it was <strong>resolved</strong>, how to <strong>prevent</strong> it on day one,
+      and <strong>detection</strong> recipes you can run. Severity ranks the blast radius when the trap is hit, not how often it happens.</p>
+      ${stats(D.lessons)}
+      <div class="callout"><strong>How to read the catalogue</strong><ul>${D.how_to_use.map(s => `<li>${md(s)}</li>`).join('')}</ul></div>
+      ${groups}
+      <footer>Rendered from <code>technical-lessons-learnt.js</code>, which <code>export_lessons_learnt.py</code> generates from
+      <a href="technical-lessons-learnt.json"><code>technical-lessons-learnt.json</code></a>. Edit the JSON, then run
+      <code>python3 docs/lessons/export_lessons_learnt.py --out docs/lessons/rules</code>.</footer>`;
+  }
+
+  function category(id, focus) {
+    const i = cats.findIndex(c => c.id === id);
+    if (i < 0) return notFound();
+    const c = cats[i], ls = byCat[id], prev = cats[i - 1], next = cats[i + 1];
+    view.innerHTML = `<p class="lead"><a href="#/">Overview</a> › ${esc(GROUPS[c.group] || c.group)}</p>
+      <h1>${esc(c.title)}</h1><p class="lead">${md(c.summary)}</p>${stats(ls)}
+      <table><thead><tr><th>id</th><th>severity</th><th>lesson</th></tr></thead><tbody>${ls.map(l =>
+        `<tr><td><a href="#/l/${l.id}">${l.id}</a></td><td>${sev(l.severity)}</td><td>${md(l.title)}</td></tr>`).join('')}</tbody></table>
+      <div class="filters"><button type="button" data-toggle>Collapse all</button>
+        <a href="rules/${c.id}.md">Markdown rule pack</a></div>
+      ${ls.map(l => lessonHtml(l, true)).join('')}
+      <div class="pager"><span>${prev ? `<a href="#/c/${prev.id}">← ${esc(prev.title)}</a>` : ''}</span>
+        <span>${next ? `<a href="#/c/${next.id}">${esc(next.title)} →</a>` : ''}</span></div>`;
+    wireToggle(true);
+    if (focus) document.getElementById(focus)?.scrollIntoView();
+    else window.scrollTo(0, 0);
+  }
+
+  let q = '', group = '', sevOn = new Set(SEVS);
+  function all() {
+    view.innerHTML = `<h1>Search all lessons</h1>
+      <div class="filters"><input id="q" type="search" placeholder="Search title, symptom, cause, fix, recipe…  ( / )" value="${esc(q)}"/>
+        <select id="group"><option value="">All stacks</option>${Object.entries(GROUPS).map(([g, n]) =>
+          `<option value="${g}"${g === group ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select></div>
+      <div class="filters"><span id="sevs">${SEVS.filter(s => count(D.lessons, s)).map(s =>
+          `<label><input type="checkbox" value="${s}"${sevOn.has(s) ? ' checked' : ''}> ${sev(s)}</label>`).join(' ')}</span>
+        <button type="button" data-toggle>Expand all</button><span id="shown" class="lead"></span></div>
+      <div id="results"></div>`;
+    const input = document.getElementById('q');
+    input.addEventListener('input', e => { q = e.target.value; results(); });
+    document.getElementById('group').addEventListener('change', e => { group = e.target.value; results(); });
+    document.getElementById('sevs').addEventListener('change', () => {
+      sevOn = new Set([...document.querySelectorAll('#sevs input:checked')].map(i => i.value)); results();
+    });
+    wireToggle(false);
+    results();
+    input.focus();
+    window.scrollTo(0, 0);
+  }
+  function results() {
+    const terms = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    let shown = 0, html = '';
+    cats.forEach(c => {
+      if (group && c.group !== group) return;
+      const ls = byCat[c.id].filter(l => sevOn.has(l.severity) &&
+        terms.every(t => JSON.stringify(l).toLowerCase().includes(t)));
+      if (!ls.length) return;
+      shown += ls.length;
+      html += `<h2><a href="#/c/${c.id}">${esc(c.title)}</a> <small class="lead">· ${ls.length}</small></h2>` +
+        ls.map(l => lessonHtml(l, false)).join('');
+    });
+    document.getElementById('results').innerHTML = html || '<p>No lessons match.</p>';
+    document.getElementById('shown').textContent = `${shown} shown`;
+  }
+
+  function wireToggle(open) {
+    const b = view.querySelector('[data-toggle]');
+    b.addEventListener('click', () => {
+      open = !open;
+      b.textContent = open ? 'Collapse all' : 'Expand all';
+      view.querySelectorAll('details.lesson').forEach(x => x.open = open);
+    });
+  }
+  function notFound() { view.innerHTML = '<h1>Not found</h1><p><a href="#/">Back to the overview</a></p>'; }
+
+  function route() {
+    const [, kind, id] = (location.hash || '#/').slice(1).split('/');
+    document.body.classList.remove('nav-open');
+    document.querySelectorAll('#sidebar a').forEach(a => {
+      const h = a.getAttribute('href');
+      a.classList.toggle('active', h === '#/' + (kind === 'l' ? 'c/' + catOf[id] : [kind, id].filter(Boolean).join('/')));
+    });
+    if (!kind) overview();
+    else if (kind === 'all') all();
+    else if (kind === 'c') category(id);
+    else if (kind === 'l' && catOf[id]) category(catOf[id], id);
+    else notFound();
+  }
+  window.addEventListener('hashchange', route);
+  route();
+
+  document.addEventListener('keydown', e => {
+    if (e.key === '/' && !/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) {
+      e.preventDefault();
+      if (location.hash === '#/all') document.getElementById('q').focus(); else location.hash = '#/all';
+    }
+  });
+  document.getElementById('menu').addEventListener('click', () => document.body.classList.toggle('nav-open'));
+  const root = document.documentElement;
+  try { const t = localStorage.getItem('lessons-theme'); if (t) root.dataset.theme = t; } catch (e) {}
+  document.getElementById('theme').addEventListener('click', () => {
+    const dark = root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+    root.dataset.theme = dark ? 'light' : 'dark';
+    try { localStorage.setItem('lessons-theme', root.dataset.theme); } catch (e) {}
+  });
+})();
+</script>
+</body>
+</html>
