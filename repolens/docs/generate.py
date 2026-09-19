@@ -417,8 +417,14 @@ def _sql_tables(root: Path, graph: Graph, max_bytes: int) -> tuple[dict[str, dic
                     if tables.pop(postgres._name(name), None) is not None:
                         removed[postgres._name(name)] = f"dropped in {rel}"
                 continue
+            sql = postgres.psql_variables(statement)[0]
             try:
-                expression = sqlglot.parse_one(postgres.psql_variables(statement)[0], read="postgres")
+                try:
+                    expression = sqlglot.parse_one(sql, read="postgres")
+                except Exception:  # noqa: BLE001 - retried once with a known parser gap worked around
+                    if (rewritten := postgres._parser_workaround(sql)) is None:
+                        raise
+                    expression = sqlglot.parse_one(rewritten, read="postgres")
             except Exception:  # noqa: BLE001 - the scan already reported what does not parse
                 continue
             kind = str(getattr(expression, "args", {}).get("kind") or "").upper()

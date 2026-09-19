@@ -420,6 +420,10 @@ repository. `pyproject.toml` still says 0.3.0.
 
 ### Fixed
 
+- A generated column whose whole expression is a comparison (`GENERATED ALWAYS AS (s >= 0.995)
+  STORED`, valid PostgreSQL) was a `SQL_PARSE_ERROR` that marked the analysis incomplete, and the
+  table was missing from the generated ER diagram. sqlglot (28 to at least 30.18) rejects the form;
+  the statement is now retried once with the expression double-parenthesised, which parses.
 - Function Lens now counts Tree-sitter TypeScript records in the frontend total; earlier output
   could report zero frontend functions while still indexing `.ts` and `.tsx` declarations.
 - The internal configured-origin marker was the text `//configured`, so a literal base

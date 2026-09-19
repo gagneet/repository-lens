@@ -245,6 +245,17 @@ class AddSqlTests(unittest.TestCase):
         self.assertEqual([(i.code, i.evidence) for i in self.graph.issues], [("SQL_PARSE_ERROR", "db/broken_mid.sql:2")])
         self.assertFalse(self.complete())
 
+    def test_a_comparison_as_a_generated_column_expression_parses(self):
+        # sqlglot 28-30 rejects `GENERATED ALWAYS AS (s >= 0.995)`; valid PostgreSQL
+        # must not become a SQL_PARSE_ERROR that marks the whole analysis incomplete.
+        text = ("CREATE TABLE ai.edit_feedback (\n  similarity numeric(5,4),\n"
+                "  accepted boolean GENERATED ALWAYS AS (similarity >= 0.995) STORED,\n"
+                "  note text DEFAULT 'GENERATED ALWAYS AS (x' \n);\n")
+        add_sql_file(self.graph, "src", text, "db/gen.sql")
+        self.assertEqual(self.tables(), {("ai.edit_feedback", "db/gen.sql:1"): "declares"})
+        self.assertEqual(self.codes(), [])
+        self.assertTrue(self.complete())
+
     def test_merge_truncate_grant_and_copy_are_recorded(self):
         add_sql(self.graph, "src", "MERGE INTO target t USING source s ON t.id = s.id WHEN MATCHED THEN UPDATE SET v = s.v", "q.py:1")
         add_sql(self.graph, "src", "TRUNCATE staging", "q.py:2")
