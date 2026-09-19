@@ -48,6 +48,17 @@ DEFAULTS: dict[str, Any] = {
 
 _COMMENT = re.compile(r"^\s*#")
 _FAILING_RETURN = re.compile(r"^\s*return 1\b", re.MULTILINE)
+#: A way to exit non-zero other than a gate flag, per script language. Only `return 1`
+#: was known, so every shell and SQL gate was reported as one that cannot fail.
+_FAILS_BY_SUFFIX = {
+    # `exit 1`, `exit "$rc"`, and errexit (`set -e`, `set -euo pipefail`, `set -o errexit`).
+    ".sh": re.compile(r"\bexit\s+\"?(?:[1-9]|\$)|^\s*set\s+(?:-[A-Za-z]*e[A-Za-z]*|-o\s+errexit)\b", re.MULTILINE),
+    # A raised exception fails the psql run that executes the file with ON_ERROR_STOP.
+    ".sql": re.compile(r"\bRAISE\s+EXCEPTION\b|^\s*ASSERT\b", re.MULTILINE | re.IGNORECASE),
+    ".py": re.compile(r"\bsys\.exit\(\s*(?!0\s*\))[^)\s]|\braise\s+SystemExit\(\s*(?!0\s*\))[^)\s]"),
+}
+_FAILS_BY_SUFFIX[".bash"] = _FAILS_BY_SUFFIX[".sh"]
+_SQL_COMMENT = re.compile(r"--[^\n]*")
 
 
 def _glob(root: Path, patterns: list[str]) -> list[Path]:
@@ -144,13 +155,19 @@ def referenced_by(settings: GateSettings, script: Path) -> list[str]:
 
 
 def can_fail(settings: GateSettings, script: Path) -> bool:
-    """Whether `script` has any way to exit non-zero: a gate flag, or a `return 1`."""
+    """Whether `script` has any way to exit non-zero: a gate flag, a `return 1`, or its
+    language's own spelling (shell `exit 1`/errexit, SQL `RAISE EXCEPTION`, `sys.exit(1)`),
+    comments excluded."""
     try:
         src = script.read_text(encoding="utf-8", errors="replace")
     except OSError:  # deleted since the walk: it cannot fail anything
         return False
     has_flag = any(f'"{flag}"' in src or f"'{flag}'" in src for flag in settings.gate_flags)
-    return has_flag or _FAILING_RETURN.search(src) is not None
+    suffix = script.suffix.lower()
+    code = _SQL_COMMENT.sub("", src) if suffix == ".sql" else "\n".join(
+        line for line in src.splitlines() if not _COMMENT.match(line))
+    fails = _FAILS_BY_SUFFIX.get(suffix)
+    return has_flag or _FAILING_RETURN.search(src) is not None or (fails is not None and fails.search(code) is not None)
 
 
 @dataclass
