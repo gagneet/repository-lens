@@ -420,6 +420,12 @@ repository. `pyproject.toml` still says 0.3.0.
 
 ### Fixed
 
+- `gates` reported every shell and SQL validation script as `gates/cannot-fail`: only a Python
+  `return 1` or a gate flag counted. It now also recognises shell `exit 1`/`exit "$rc"` and errexit
+  (`set -e`, `set -euo pipefail`), SQL `RAISE EXCEPTION`/`ASSERT`, and `sys.exit(1)`/`raise SystemExit(…)`,
+  with comments excluded.
+- The `osv-scanner` skip message said `pip install osv-scanner`; there is no such package. It now
+  points at the release binaries.
 - A generated column whose whole expression is a comparison (`GENERATED ALWAYS AS (s >= 0.995)
   STORED`, valid PostgreSQL) was a `SQL_PARSE_ERROR` that marked the analysis incomplete, and the
   table was missing from the generated ER diagram. sqlglot (28 to at least 30.18) rejects the form;
