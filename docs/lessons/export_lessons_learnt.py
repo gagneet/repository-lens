@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Export the Technical Lessons Learnt catalogue as repolens-style rule packs.
 
-The canonical catalogue is ``technical-lessons-learnt.json`` next to this script; the
-script only READS it. It writes one Markdown file per category (plus an index) into
+The canonical catalogue is ``repolens/lessons/catalogue.json``, which ships as package
+data so `repolens report` can read it inside a target repository; the script only READS it. It writes one Markdown file per category (plus an index) into
 ``--out``, and refreshes ``technical-lessons-learnt.js`` next to the catalogue: the same data
 as a script, so ``index.html`` works when opened straight from disk (``file://`` blocks fetch). The committed copy under ``docs/lessons/rules/`` is its output: edit the JSON,
 then re-run the first command below. Standard library only.
@@ -14,8 +14,8 @@ import argparse
 import json
 from pathlib import Path
 
-CATALOGUE = Path(__file__).resolve().with_name("technical-lessons-learnt.json")
-PAGE_DATA = CATALOGUE.with_suffix(".js")
+CATALOGUE = Path(__file__).resolve().parents[2] / "repolens" / "lessons" / "catalogue.json"
+PAGE_DATA = Path(__file__).resolve().with_name("technical-lessons-learnt.js")
 SEVERITIES = ["critical", "high", "medium", "low", "info"]
 
 

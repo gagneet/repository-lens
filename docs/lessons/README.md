@@ -20,7 +20,7 @@ and are not specific to any one application.
 
 | file | what it is |
 |---|---|
-| [`technical-lessons-learnt.json`](technical-lessons-learnt.json) | **The canonical catalogue.** Edit this file. |
+| [`../../repolens/lessons/catalogue.json`](../../repolens/lessons/catalogue.json) | **The canonical catalogue.** Edit this file. It ships as package data, so `repolens report --only lessons` can read it inside a target repository. |
 | [`index.html`](index.html) | **Start here.** A browsable page: an overview, one page per category, a link to each lesson, and search with severity and stack filters. Open it straight from disk; it needs no server. |
 | [`technical-lessons-learnt.js`](technical-lessons-learnt.js) | The catalogue as a script, which `index.html` loads (browsers block `fetch` on `file://`). Generated; do not edit. |
 | [`rules/`](rules/README.md) | One Markdown rule pack per category, generated from the JSON |

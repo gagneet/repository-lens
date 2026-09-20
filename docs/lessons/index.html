@@ -132,7 +132,7 @@ footer { color:var(--muted); font-size:13px; margin-top:40px; }
       cs.map(c => `<a href="#/c/${c.id}">${esc(c.title)} <small>${byCat[c.id].length}</small></a>`).join('');
   });
   nav += `<div class="nav-label">Files</div><a href="README.md">README.md</a><a href="rules/README.md">Rule packs (Markdown)</a>` +
-    `<a href="technical-lessons-learnt.json">Catalogue JSON</a>`;
+    `<a href="../../repolens/lessons/catalogue.json">Catalogue JSON</a>`;
   document.getElementById('sidebar').innerHTML = nav;
 
   function lessonHtml(l, open) {
@@ -162,7 +162,7 @@ footer { color:var(--muted); font-size:13px; margin-top:40px; }
       <div class="callout"><strong>How to read the catalogue</strong><ul>${D.how_to_use.map(s => `<li>${md(s)}</li>`).join('')}</ul></div>
       ${groups}
       <footer>Rendered from <code>technical-lessons-learnt.js</code>, which <code>export_lessons_learnt.py</code> generates from
-      <a href="technical-lessons-learnt.json"><code>technical-lessons-learnt.json</code></a>. Edit the JSON, then run
+      <a href="../../repolens/lessons/catalogue.json"><code>repolens/lessons/catalogue.json</code></a>. Edit the JSON, then run
       <code>python3 docs/lessons/export_lessons_learnt.py --out docs/lessons/rules</code>.</footer>`;
   }
 

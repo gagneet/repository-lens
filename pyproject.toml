@@ -33,3 +33,6 @@ include = ["repolens*"]
 [tool.setuptools.package-data]
 repolens = ["templates/*"]
 "repolens.rules" = ["*.md"]
+# `repolens report --only lessons` reads the catalogue inside a TARGET repository,
+# so it has to travel in the wheel, not sit in this checkout's docs/.
+"repolens.lessons" = ["*.json"]
