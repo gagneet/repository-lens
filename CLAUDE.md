@@ -13,6 +13,7 @@ python -m compileall -q repolens tests                 # syntax check used in th
 bin/repolens <command>                                 # run from a checkout without installing
 repolens analyze --out .repolens/analysis              # scan this checkout
 repolens api export --out docs/api                     # regenerate OpenAPI + Postman contracts
+python -m build                                        # wheel + sdist (needs `build`; setuptools>=77)
 ```
 
 Without the `stack`/`api`/`test` extras about a third of the suite skips (`skipUnless` on
@@ -28,9 +29,12 @@ After changing API models, routes or defaults (including `analysis.VIEW_DEPTH`),
 There is no lint config in `pyproject.toml`. `requirements-ci.txt` pins ruff/bandit for
 `repolens report` baselines in *target* repositories, and matches `bootstrap.SCANNER_PINS`.
 Its comments cover both this checkout and a vendored copy (a consumer typically keeps one at
-`tools/repolens`). Pydantic model docstrings in `api/app.py` become OpenAPI
-descriptions, so editing them also needs `repolens api export`. Record user-visible
-changes and upgrade notes in `CHANGELOG.md`. Doc sections a release removes go
+`tools/repolens`). The package version lives only in `repolens/__init__.py`;
+`pyproject.toml` reads it through `[tool.setuptools.dynamic]`, so a release bumps that one
+line (`docs/installation.md`, "Building a release"; the tags up to `v0.4.0` all carry
+`0.3.0`, which is the drift that closes). Pydantic model docstrings in
+`api/app.py` become OpenAPI descriptions, so editing them also needs `repolens api
+export`. Record user-visible changes and upgrade notes in `CHANGELOG.md`. Doc sections a release removes go
 under `docs/history/`, verbatim except that identifiers of other repositories are generalised.
 
 ## Architecture
@@ -271,7 +275,7 @@ must never read as a clean repository. It is selected by the tools list under th
 `sarif-commands` — like `commands`, it is a `_PSEUDO_TOOLS` entry rather than an adapter, so
 `--only` scopes it and `--list-tools` shows it.
 
-The `lessons` tool (`report/lessons.py`) matches `repolens/lessons/catalogue.json` — 260
+The `lessons` tool (`report/lessons.py`) matches `repolens/lessons/catalogue.json` — 269
 stack-level traps, package data so it travels into a target repository — against the
 repository under report. It is precision-first in two ways that must not be relaxed
 casually. `runnable_pattern` refuses any recipe whose scope or condition is written for a

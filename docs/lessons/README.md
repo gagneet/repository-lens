@@ -1,6 +1,6 @@
 # Technical lessons learnt
 
-A catalogue of **260 stack-level lessons** for applications built with Next.js / TypeScript /
+A catalogue of **269 stack-level lessons** for applications built with Next.js / TypeScript /
 JavaScript on the front end and FastAPI / Python with PostgreSQL and MongoDB behind it. It also
 covers the CI, git and deploy tooling around such a stack. Each lesson records:
 

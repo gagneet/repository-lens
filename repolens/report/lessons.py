@@ -149,6 +149,10 @@ _CATEGORY_SUFFIXES: dict[str, tuple[str, ...]] = {
     "generated-artefacts-git": (".py", ".js", ".ts", ".sh", ".yml", ".yaml"),
     "github-deps": (".yml", ".yaml", ".json", ".sh"),
     "deploy-ops": (".sh", ".yml", ".yaml", ".toml", ".py"),
+    # Accessibility traps live in markup and stylesheets, which no group walks: the
+    # frontend group is script suffixes only, so an accessibility lesson scoped to its
+    # group could never match the `role=` attribute or the colour token it is about.
+    "accessibility": (".html", ".htm", ".css", ".ts", ".tsx", ".js", ".jsx", ".vue", ".svelte"),
 }
 
 

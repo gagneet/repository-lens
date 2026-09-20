@@ -46,6 +46,23 @@ Without `stack`, the lower-level `impact` command can fall back to legacy JavaSc
 regex extraction and will report that limitation; `analyze` requires the stack extras so
 it cannot silently present a degraded result.
 
+### As a standalone tool
+
+The wheel is pure Python (`py3-none-any`), so the same one installs on Linux and macOS.
+An isolated install keeps repolens's extras out of the environment of the project being
+analyzed and puts `repolens` on `PATH`:
+
+```bash
+python -m build                                    # writes dist/ (needs the `build` package)
+pipx install 'dist/repolens-<version>-py3-none-any.whl[stack,api]'
+repolens --root /path/to/checkout analyze --out .repolens/analysis
+```
+
+`uv tool install` accepts the same argument, and `bin/repolens` runs the CLI from a
+checkout with nothing installed at all. Building a release, including the one line a
+version bump touches, is in
+[docs/installation.md](docs/installation.md#building-a-release).
+
 ## Quick start
 
 Run against the current checkout:
@@ -217,7 +234,7 @@ runtime requirement for the project’s own tests.
 - [docs/api/README.md](docs/api/README.md) — Swagger/OpenAPI/Postman workflow
 - [docs/plugins.md](docs/plugins.md) — extractor extension contract
 - [docs/roadmap.md](docs/roadmap.md) — implemented scope, open gaps and priorities
-- [docs/installation.md](docs/installation.md) — install, CI, upgrading and vendoring a copy
+- [docs/installation.md](docs/installation.md) — install, building a release, CI, upgrading and vendoring a copy
 - [CHANGELOG.md](CHANGELOG.md) — changes and upgrade notes by release
 - [docs/history/](docs/history/) — the 0.2 roadmap and installation guide, verbatim, for older references
 - [docs/audit/2026-09-12-professional-foundation.md](docs/audit/2026-09-12-professional-foundation.md) — deep-dive verification and confidence ratings

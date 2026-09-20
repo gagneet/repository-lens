@@ -88,6 +88,7 @@ The evaluation targets are deliberately not named.
 | [FT-06](#ft-06--code-a-page-calls-directly-belongs-to-no-feature-group) | Code a page calls directly belongs to no feature group | open | low–medium |
 | [REL-08](#rel-08--continuous-integration-for-this-repository) | Continuous integration for this repository | open | medium |
 | [REL-09](#rel-09--repolens-vendor-verify) | `repolens vendor verify` | open | low |
+| [REL-10](#rel-10--released-tags-do-not-carry-their-own-version) | Released tags do not carry their own version | open | medium |
 
 ---
 
@@ -800,6 +801,24 @@ the mount investigation on the large evaluation repository.
   directory without the record, and exits non-zero on a difference; test it on a temporary
   git repository.
 - **Why:** proving a vendored copy is unmodified should not take a hand diff.
+
+### REL-10 — Released tags do not carry their own version
+- **Status:** open · **Severity:** medium
+- **Analysis:** `v0.2.0`, `v0.3.0` and `v0.4.0` all point at commits whose
+  `repolens/__init__.py` reads `__version__ = "0.3.0"`, and `pyproject.toml` repeated the
+  same literal. A wheel built from any of the three is named `repolens-0.3.0`, and a report
+  produced by the newest is stamped `repolens 0.3.0` by `provenance.tool_build()`. Three
+  releases cannot be told apart from the tool's own output, and two of those wheels cannot
+  coexist in an index. The duplication is now gone — `pyproject.toml` declares
+  `dynamic = ["version"]` and reads the attribute — but that only keeps the two in step; it
+  cannot make a stale attribute right.
+- **Required:** bump `__version__` past `0.4.0` in the next release, and check the artifact
+  against the tag before pushing it (`python -m build`, then the wheel filename and
+  `repolens --version` from an install of it). Retagging the three published tags is not
+  proposed: the commits they name are public, and a moved tag is worse than a recorded one.
+- **Why:** the provenance stamp exists so a result can be matched to the code that produced
+  it. A version shared by three releases makes that stamp's first field decorative, and the
+  cache/config fingerprints it sits beside do not cover the tool's own behaviour changes.
 
 ---
 

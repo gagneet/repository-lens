@@ -30,11 +30,27 @@ repository. `pyproject.toml` still says 0.3.0.
 
 ### Changed
 
+- `pyproject.toml` takes the package version from `repolens.__version__`
+  (`[tool.setuptools.dynamic]`) instead of repeating it. A release now bumps one line in
+  `repolens/__init__.py`, and a built wheel can no longer disagree with what `--version` and
+  the provenance stamp report. The tags `v0.2.0`, `v0.3.0` and `v0.4.0` were all cut from
+  commits carrying `0.3.0`, which is what this prevents from here on; see REL-10 in
+  `docs/tasks.md`.
+- `pyproject.toml` declares the licence as the SPDX string `license = "MIT"` with
+  `license-files = ["LICENSE"]` (PEP 639). The old `license = { text = "MIT" }` table is
+  deprecated and stops building after 2027-02-18. This raises the build requirement to
+  `setuptools>=77`; `python -m build` installs that in its isolated environment, so only a
+  `--no-build-isolation` build on an older setuptools is affected. Nothing at run time
+  changes.
+- `bin/repolens` is executable. It carries a `#!/usr/bin/env python3` line and both README
+  and CLAUDE.md document running it directly, but it was committed `100644`, so
+  `bin/repolens analyze` failed with "Permission denied" until it was run through an
+  explicit interpreter.
 - `semgrep` joins the default tool list. Its adapter refuses a registry config, so it is
   offline by construction; unconfigured it reports itself skipped with the reason, which is
   more use than being silently absent. `osv-scanner` and `pip-audit` stay `--with`-only
   because they query api.osv.dev and PyPI, and a default report must not leave the machine.
-- `repolens/lessons/catalogue.json`: 260 stack-level lessons (Next.js/TypeScript, FastAPI/Python,
+- `repolens/lessons/catalogue.json`: 269 stack-level lessons (Next.js/TypeScript, FastAPI/Python,
   asyncio, PostgreSQL RLS and schema, Alembic, SQLAlchemy/asyncpg, MongoDB, multi-store consistency, security,
   CI gates, generated artefacts, deploy and secrets). Each records symptom, root cause, resolution,
   prevention, detection recipes, evidence and sources, with repolens severities. It ships as package
