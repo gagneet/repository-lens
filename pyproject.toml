@@ -1,5 +1,7 @@
 [build-system]
-requires = ["setuptools>=68"]
+# 77 is the floor for PEP 639 license metadata (the SPDX string below); a `license`
+# table warns on any setuptools and stops building after 2027-02-18.
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,7 +10,8 @@ dynamic = ["version"]
 description = "Read-only static repository analysis with evidence graphs, impact reports and local API contracts."
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "Repository Lens contributors" }]
 dependencies = []
 
@@ -26,7 +29,9 @@ repolens = "repolens.cli:main"
 # Kept so the standalone impact tracer's documented command still works.
 impact-tracer = "repolens.impact.cli:main"
 
-# Single source of truth: repolens/__init__.py, which --version and the provenance stamp read.
+# The version has one home, `repolens/__init__.py`, which `--version`, `provenance.tool_build()`
+# and the API's OpenAPI document all read. setuptools reads that attribute here, so a wheel
+# cannot be built under a number the running tool does not report.
 [tool.setuptools.dynamic]
 version = { attr = "repolens.__version__" }
 

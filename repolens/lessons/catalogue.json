@@ -1,14 +1,15 @@
 {
  "title": "Technical Lessons Learnt — Next.js / TypeScript / Python / FastAPI / PostgreSQL / MongoDB",
  "schema_version": 1,
- "as_of": "2026-09-18",
- "content_hash": "4313ad8efdf3b95a",
+ "as_of": "2026-09-20",
+ "content_hash": "9a666ef399e1eea4",
  "how_to_use": [
   "Each lesson is stack-level, not application-level: symptom → root cause → resolution → prevention → detection.",
   "severity uses the repolens vocabulary (critical/high/medium/low/info) and ranks the blast radius when the trap is hit, not how often.",
   "detection[].kind: regex (grep-able pattern), ast (needs a parser), sql (run against the live catalog), shell, ci, test, lint, config, review (human judgement). Regexes are starting points — tune per repo; every one has false positives.",
   "evidence cites commits/docs in the source repository; sources are external references. An evidence-free lesson came from research, not an incident.",
-  "Rule packs: docs/lessons/rules/ (one Markdown file per category). Regenerate with python3 docs/lessons/export_lessons_learnt.py --out docs/lessons/rules [--category <id>] [--min-severity high]."
+  "Rule packs: docs/lessons/rules/ (one Markdown file per category). Regenerate with python3 docs/lessons/export_lessons_learnt.py --out docs/lessons/rules [--category <id>] [--min-severity high].",
+  "content_hash is sha256 of json.dumps(lessons, sort_keys=True, separators=(',',':'), ensure_ascii=False), first 16 hex."
  ],
  "severity_levels": [
   "critical",
@@ -37,14 +38,14 @@
    "title": "API Contract (client ↔ server)",
    "group": "frontend",
    "summary": "Axios base URLs, error envelopes, payload shapes that fail silently.",
-   "count": 12
+   "count": 13
   },
   {
    "id": "typescript-js",
    "title": "TypeScript & JavaScript",
    "group": "frontend",
    "summary": "Language traps: dates, sorting, numbers, truthiness, types that lie.",
-   "count": 10
+   "count": 12
   },
   {
    "id": "frontend-testing",
@@ -58,7 +59,14 @@
    "title": "JS Dependencies & Tooling",
    "group": "frontend",
    "summary": "Yarn/npm, lockfiles, CVEs, upgrades.",
-   "count": 7
+   "count": 8
+  },
+  {
+   "id": "accessibility",
+   "title": "Accessibility (WCAG)",
+   "group": "frontend",
+   "summary": "ARIA roles that promise more than the markup delivers, live regions, contrast across themes, keyboard navigation.",
+   "count": 4
   },
   {
    "id": "fastapi-pydantic",
@@ -170,7 +178,7 @@
    "title": "Secrets & Test Isolation",
    "group": "tooling",
    "summary": "Secrets in templates, tests reaching production, test-data flags.",
-   "count": 4
+   "count": 5
   },
   {
    "id": "docs-knowledge",
@@ -1311,7 +1319,7 @@
     },
     {
      "kind": "regex",
-     "recipe": "[`'\\\"]\\$\\$\\{|>\\$\\{"
+     "recipe": "[`'\\\"]\\$\\$\\{|>\\s*\\$\\$\\{"
     },
     {
      "kind": "regex",
@@ -1322,7 +1330,36 @@
     "21771129c",
     "6cb1e8cec",
     "9ccab84da",
-    "6f6a4ab7f"
+    "6f6a4ab7f",
+    "retirement_calculator_au (2026-09-20): the un-escaped '>${' arm matched 20 chart/label interpolations and no dates"
+   ],
+   "sources": []
+  },
+  {
+   "id": "AC-013",
+   "category": "api-contract",
+   "title": "A field name that states neither its unit nor its time base",
+   "stacks": [
+    "javascript",
+    "api-contract"
+   ],
+   "severity": "high",
+   "symptom": "`estateAtLifespan` held nominal dollars when one code path wrote it and inflation-adjusted present-value dollars when another did, and both wrote the same key into the same persisted payload. Comparing it against a present-value target overstated it by the plan's whole inflation factor. Separately, a balance measured at the planning age was discounted over the years-to-retirement instead, overstating it 1.9x.",
+   "root_cause": "The name said WHEN the value is measured but not WHAT it is measured in, and no single function owned the conversion. Two producers of \"the same\" field disagreed, and nothing compared them.",
+   "resolution": "Put both the unit and the time base in the name, convert in exactly one place, and derive a discount horizon from the two ages rather than reusing whichever span variable is already in scope.",
+   "prevention": "Two quantities that cannot be added are not the same field. Name them apart, and keep the conversion at one boundary.",
+   "detection": [
+    {
+     "kind": "review",
+     "recipe": "grep every writer of a shared payload key and confirm they agree on units"
+    },
+    {
+     "kind": "test",
+     "recipe": "assert a known input yields the documented unit on every path that writes the field"
+    }
+   ],
+   "evidence": [
+    "retirement_calculator_au (2026-09-20 audit): reverse planner and the forward-projection bridge wrote estateAtLifespan in different units"
    ],
    "sources": []
   },
@@ -1418,10 +1455,16 @@
    "detection": [
     {
      "kind": "regex",
-     "recipe": "toFixed\\(2\\)|parseFloat\\(.*(amount|price|total|balance)"
+     "recipe": "parseFloat\\(.*(amount|price|total|balance|salary|cost|income)"
+    },
+    {
+     "kind": "ast",
+     "recipe": "arithmetic on a money-typed binding, not a formatting call on one"
     }
    ],
-   "evidence": [],
+   "evidence": [
+    "retirement_calculator_au (2026-09-20): every one of 20 'toFixed(2)' matches was display formatting; none was money arithmetic"
+   ],
    "sources": [
     "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number/toFixed"
    ]
@@ -1468,7 +1511,9 @@
      "recipe": "\\.sort\\(\\)"
     }
    ],
-   "evidence": [],
+   "evidence": [
+    "retirement_calculator_au (2026-09-20): Object.keys(versions).sort().reverse() ranked '2026.1' above '2.4.0'"
+   ],
    "sources": [
     "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/sort"
    ]
@@ -1571,6 +1616,64 @@
    "sources": [
     "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number/MAX_SAFE_INTEGER"
    ]
+  },
+  {
+   "id": "TS-011",
+   "category": "typescript-js",
+   "title": "`Number.isFinite(Number(x))` accepts null, '' and [] as zero",
+   "stacks": [
+    "javascript",
+    "typescript"
+   ],
+   "severity": "high",
+   "symptom": "A confidence that had not been measured yet rendered as a measured `0%` — the worst possible reading of a missing value. The guard looked like a validity check.",
+   "root_cause": "`Number(null)`, `Number('')`, `Number(' ')`, `Number([])` and `Number(false)` are all `0`, and `0` is finite. `Number.isFinite` answers \"is this a finite number\", never \"did the caller supply one\".",
+   "resolution": "Test the input rather than its coercion: `typeof x === 'number' && Number.isFinite(x)`, or reject nullish and empty explicitly before coercing. Render a missing value as \"not assessed\", not as zero.",
+   "prevention": "\"Has a value been supplied\" and \"is the value in range\" are two questions; a parse helper that answers only the second needs a nullish guard in front of it.",
+   "detection": [
+    {
+     "kind": "regex",
+     "recipe": "Number\\.isFinite\\(\\s*(Number|parseFloat|parseInt)\\("
+    },
+    {
+     "kind": "review",
+     "recipe": "a coerce-then-range-check helper reached by a value that may be null"
+    }
+   ],
+   "evidence": [
+    "retirement_calculator_au (2026-09-20 audit): parseConfidence(null) returned 0, which reached the comparison table as '0%'"
+   ],
+   "sources": [
+    "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number/isFinite"
+   ]
+  },
+  {
+   "id": "TS-012",
+   "category": "typescript-js",
+   "title": "A bounds check that is always true makes the rest of the condition dead",
+   "stacks": [
+    "javascript",
+    "typescript"
+   ],
+   "severity": "high",
+   "symptom": "`const passes = target <= 1 || (measured !== undefined ? measured >= target : true)`. A probability is always `<= 1`, so the right-hand side never ran and the user's confidence requirement was ignored on every code path. It had shipped, with tests — all of which asserted the `true` result.",
+   "root_cause": "The guard was written against the wrong bound. The author meant \"no target was set\" (`<= 0`) and wrote \"this is a probability\" (`<= 1`).",
+   "resolution": "Correct the bound, and separate \"the condition does not apply\" from \"the condition passed\" so the caller can tell which happened.",
+   "prevention": "For every short-circuit guard, write the test that makes the right-hand side matter. A branch no test can make false is dead code, and a suite that only asserts the passing result cannot see it.",
+   "detection": [
+    {
+     "kind": "regex",
+     "recipe": "<=\\s*1(\\.0)?\\s*\\|\\||>=\\s*0(\\.0)?\\s*\\|\\|"
+    },
+    {
+     "kind": "test",
+     "recipe": "per short-circuit guard, one case making the left operand false and asserting on the right"
+    }
+   ],
+   "evidence": [
+    "retirement_calculator_au (2026-09-20 audit): evaluateEngineGoal's passesConfidence returned true for a 99% target against a measured 1%"
+   ],
+   "sources": []
   },
   {
    "id": "FT-001",
@@ -2056,6 +2159,161 @@
     "bb66813f6 (2026-06-28)"
    ],
    "sources": []
+  },
+  {
+   "id": "JD-008",
+   "category": "js-dependencies",
+   "title": "npm resolves a peer conflict by overriding it, and only warns",
+   "stacks": [
+    "npm",
+    "node",
+    "dependencies"
+   ],
+   "severity": "high",
+   "symptom": "`npm install pkg@latest` printed 15 `npm warn ERESOLVE overriding peer dependency` lines and exited 0. The tree then held a second, older copy of the conflicting package nested under the offender, and `npm ls --all` reported it `invalid:`.",
+   "root_cause": "npm 7+ installs peer dependencies automatically and, when they conflict, prefers completing the install to failing. The result is a tree that does not match what the manifests ask for, announced only in a warning that scrolls past in CI output.",
+   "resolution": "Treat an ERESOLVE warning as a failure. Either hold the dependency at the last version that resolves cleanly, or wait for the upstream package to widen its peer range — the block is usually one transitive package pinning an old major.",
+   "prevention": "Gate on a clean resolve, not on the exit code. `--legacy-peer-deps` and an `overrides` block silence the same problem without fixing it.",
+   "detection": [
+    {
+     "kind": "shell",
+     "recipe": "rm -rf node_modules && npm ci 2>&1 | grep -c 'ERESOLVE\\|Conflicting peer'"
+    },
+    {
+     "kind": "shell",
+     "recipe": "npm ls --all 2>&1 | grep -c 'invalid:'"
+    },
+    {
+     "kind": "regex",
+     "recipe": "legacy-peer-deps|\\\"overrides\\\"\\s*:"
+    }
+   ],
+   "evidence": [
+    "retirement_calculator_au (2026-09-20 audit): @babel/core 8 held at 7 because babel-preset-current-node-syntax still depends on @babel/plugin-syntax-*@^7"
+   ],
+   "sources": [
+    "https://docs.npmjs.com/cli/v10/commands/npm-install"
+   ]
+  },
+  {
+   "id": "AX-001",
+   "category": "accessibility",
+   "title": "A composite ARIA role without the children the role requires",
+   "stacks": [
+    "accessibility",
+    "html"
+   ],
+   "severity": "high",
+   "symptom": "`role=\"tablist\"` on a div whose children were plain buttons with no `role=\"tab\"`, `aria-selected` or `aria-controls`, and whose panels were plain divs. A screen reader announced a tab list containing no tabs and never said which view was showing. On another page the same role wrapped a single button that controlled nothing.",
+   "root_cause": "The container role was added for the name it gives, without the owned elements it requires. `tablist`, `radiogroup`, `menu`, `listbox`, `tree` and `grid` all require specific child roles; a container without them is worse than no role, because it replaces a working generic with a broken widget.",
+   "resolution": "Apply the roles, ids and selected state from one function at init so the buttons, the panels and the selection cannot drift apart, and add a roving tabindex with arrow/Home/End keys. Where the thing is not really a tab list, delete the role: a set of toggles is `role=\"group\"` with `aria-pressed`, and a single label is a heading.",
+   "prevention": "A container role is a promise about its children. Adding one means adding all of them.",
+   "detection": [
+    {
+     "kind": "regex",
+     "recipe": "role=[\\\"'](tablist|radiogroup|menu|menubar|listbox|tree|grid)[\\\"']"
+    },
+    {
+     "kind": "review",
+     "recipe": "per container role, confirm every required child role is present and kept in sync"
+    }
+   ],
+   "evidence": [
+    "retirement_calculator_au (2026-09-20 audit): two pages carried role=tablist with no role=tab children; WCAG 2.0 SC 4.1.2"
+   ],
+   "sources": [
+    "https://www.w3.org/WAI/ARIA/apg/patterns/tabs/"
+   ]
+  },
+  {
+   "id": "AX-002",
+   "category": "accessibility",
+   "title": "A toast injected into the DOM with no live region",
+   "stacks": [
+    "accessibility",
+    "javascript"
+   ],
+   "severity": "high",
+   "symptom": "A shared notification helper created a styled div, appended it to `body` and removed it after five seconds. Screen-reader users got no feedback for any action on any page — including \"this action could not be completed\".",
+   "root_cause": "The banner conveys its meaning through position and colour. Nothing tells assistive technology that the DOM changed, and the element is never focused, so nothing reads it.",
+   "resolution": "`role=\"alert\"` with `aria-live=\"assertive\"` for errors and warnings, `role=\"status\"` with `aria-live=\"polite\"` for confirmations, plus `aria-atomic=\"true\"`. Put it in the shared helper, not at the call sites — one edit then covers every page.",
+   "prevention": "Anything that appears in response to an action, and does not take focus, needs a live role. An error conveyed only visually also fails SC 3.3.1.",
+   "detection": [
+    {
+     "kind": "regex",
+     "recipe": "className\\s*=\\s*[`'\\\"]?(notification|toast|snackbar|flash)"
+    },
+    {
+     "kind": "review",
+     "recipe": "per element appended in response to an action, a live role or a focus move"
+    }
+   ],
+   "evidence": [
+    "retirement_calculator_au (2026-09-20 audit): utils.js showNotification appended an unannounced div for success and error alike"
+   ],
+   "sources": [
+    "https://www.w3.org/WAI/WCAG21/Understanding/error-identification.html"
+   ]
+  },
+  {
+   "id": "AX-003",
+   "category": "accessibility",
+   "title": "Contrast verified in the default theme only",
+   "stacks": [
+    "accessibility",
+    "css"
+   ],
+   "severity": "medium",
+   "symptom": "A text token used for small labels measured 4.12:1 in the light theme (large text only) and 2.81:1 in the dark theme — below even the 3:1 large-text floor. A third theme failed at 3.34:1. The shipped default theme passed, so nobody saw any of it.",
+   "root_cause": "Contrast was checked once, against one background. A token redefined in each theme block needs checking against THAT theme's background, and against the card surface as well as the page background, which are rarely the same colour.",
+   "resolution": "Compute the ratio for every (token, theme background) pair and require 4.5:1 for normal text and 3:1 for large. Darken or lighten the token in place — one value per theme fixes every usage at once.",
+   "prevention": "Make the check a test beside the tokens, and fail when a new theme block introduces a token the table does not cover, so a theme cannot be added without being measured.",
+   "detection": [
+    {
+     "kind": "regex",
+     "recipe": "\\[data-theme=|\\[data-contrast=|prefers-color-scheme"
+    },
+    {
+     "kind": "test",
+     "recipe": "relative-luminance ratio per token against each theme background and surface"
+    }
+   ],
+   "evidence": [
+    "retirement_calculator_au (2026-09-20 audit): --ink-4 failed AA in 2 of 5 themes; WCAG 2.0 SC 1.4.3"
+   ],
+   "sources": [
+    "https://www.w3.org/WAI/WCAG21/Understanding/contrast-minimum.html"
+   ]
+  },
+  {
+   "id": "AX-004",
+   "category": "accessibility",
+   "title": "A long form with no skip link, no landmark, and headings buried inside buttons",
+   "stacks": [
+    "accessibility",
+    "html"
+   ],
+   "severity": "medium",
+   "symptom": "A twenty-section form where every keyboard user tabbed through the whole top bar and tier selector on each load. No `<main>`, no skip link, and each accordion's `<h3>` sat INSIDE its `<button>` rather than wrapping it, so the heading list screen-reader users navigate by did not reliably offer the sections.",
+   "root_cause": "The controls were keyboard-operable, so the page passed a shallow check. Operability is not navigability: on a page this long, the cost is reaching the part you want.",
+   "resolution": "A skip link as the first focusable element, one `<main>` as its target, and the APG accordion shape — heading wraps button, button carries `aria-expanded` and `aria-controls`. Assign the ids from the init function rather than by hand across twenty sections.",
+   "prevention": "Tab through the page before shipping. The first Tab should offer to skip to the content.",
+   "detection": [
+    {
+     "kind": "regex",
+     "recipe": "<button[^>]*>(\\s*<[^/][^>]*>)*\\s*<h[1-6]"
+    },
+    {
+     "kind": "test",
+     "recipe": "assert a skip link precedes every other focusable element and its href resolves to a landmark"
+    }
+   ],
+   "evidence": [
+    "retirement_calculator_au (2026-09-20 audit): retirement.html and reverse.html; WCAG 2.0 SC 2.4.1"
+   ],
+   "sources": [
+    "https://www.w3.org/WAI/ARIA/apg/patterns/accordion/"
+   ]
   },
   {
    "id": "FA-001",
@@ -6763,6 +7021,40 @@
    ],
    "evidence": [
     "footgun #12"
+   ],
+   "sources": []
+  },
+  {
+   "id": "SE-005",
+   "category": "secrets-test-isolation",
+   "title": "A static build publishes the server's own source, credentials included",
+   "stacks": [
+    "secrets",
+    "deploy",
+    "javascript",
+    "nginx"
+   ],
+   "severity": "critical",
+   "symptom": "`curl https://site/contact/feedback_server.py` returned 200 with `ADMIN_PASSWORD = '...'` and the Flask `SECRET_KEY` in plain text. The PHP admin panel's source and a shell script that echoed the same password were served the same way.",
+   "root_cause": "The bundler's copy step listed a directory of operator scripts into the output directory the web server serves as static files. Python and PHP are not executed there, so the request falls through to the static handler and returns the file verbatim. The admin panel had therefore never worked — getting its source back over HTTP is the proof.",
+   "resolution": "Drop them from the copy patterns and run operator scripts outside the document root. Rotate every credential the file carried: deleting the file does not un-publish what was already fetched, and the value survives in git history. Read the access log to see who fetched those paths.",
+   "prevention": "Assert the build output contains no server-side source, and deny those suffixes at the web server as defence in depth.",
+   "detection": [
+    {
+     "kind": "regex",
+     "recipe": "from:\\s*['\\\"][^'\\\"]*\\.(py|php|sh|env|ini|bak)['\\\"]"
+    },
+    {
+     "kind": "shell",
+     "recipe": "find dist -regex '.*\\.\\(py\\|php\\|sh\\|env\\|ini\\|bak\\)$'"
+    },
+    {
+     "kind": "ci",
+     "recipe": "fetch each server-source path from the deployed site and require 404"
+    }
+   ],
+   "evidence": [
+    "retirement_calculator_au (2026-09-20 audit): four files served 200 from /contact/ before the copy patterns were removed"
    ],
    "sources": []
   },

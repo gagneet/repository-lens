@@ -11,6 +11,7 @@
 | JD-005 | high | Minor bumps break types that mocked tests cannot see |
 | JD-006 | medium | Major bumps silently change defaults, attributes and module paths |
 | JD-007 | low | Removing a UI library: runtime-generated classes, same-named components, duplicate majors |
+| JD-008 | high | npm resolves a peer conflict by overriding it, and only warns |
 
 ## JD-001 — Yarn 1 `yarn upgrade <pkg>` is a silent no-op for transitive dependencies
 
@@ -138,3 +139,25 @@
 - `shell`: `yarn why <pkg> | grep -c 'Found' (more than one major)`
 
 **Evidence.** 8d7419b26; 0bfa6dc1a; bb66813f6 (2026-06-28)
+
+## JD-008 — npm resolves a peer conflict by overriding it, and only warns
+
+*Severity:* **high** · *Stacks:* npm, node, dependencies
+
+**Symptom.** `npm install pkg@latest` printed 15 `npm warn ERESOLVE overriding peer dependency` lines and exited 0. The tree then held a second, older copy of the conflicting package nested under the offender, and `npm ls --all` reported it `invalid:`.
+
+**Root cause.** npm 7+ installs peer dependencies automatically and, when they conflict, prefers completing the install to failing. The result is a tree that does not match what the manifests ask for, announced only in a warning that scrolls past in CI output.
+
+**Resolution.** Treat an ERESOLVE warning as a failure. Either hold the dependency at the last version that resolves cleanly, or wait for the upstream package to widen its peer range — the block is usually one transitive package pinning an old major.
+
+**Prevention.** Gate on a clean resolve, not on the exit code. `--legacy-peer-deps` and an `overrides` block silence the same problem without fixing it.
+
+**How it is checked.**
+
+- `shell`: `rm -rf node_modules && npm ci 2>&1 | grep -c 'ERESOLVE\|Conflicting peer'`
+- `shell`: `npm ls --all 2>&1 | grep -c 'invalid:'`
+- `regex`: `legacy-peer-deps|\"overrides\"\s*:`
+
+**Evidence.** retirement_calculator_au (2026-09-20 audit): @babel/core 8 held at 7 because babel-preset-current-node-syntax still depends on @babel/plugin-syntax-*@^7
+
+**Sources.** <https://docs.npmjs.com/cli/v10/commands/npm-install>

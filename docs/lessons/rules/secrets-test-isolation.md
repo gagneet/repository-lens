@@ -8,6 +8,7 @@
 | SE-002 | critical | The test suite reaching production |
 | SE-003 | medium | Test-data flags live on rows; nothing flags a FILE or an unflagged row |
 | SE-004 | high | Never probe a live mutation endpoint with real data |
+| SE-005 | critical | A static build publishes the server's own source, credentials included |
 
 ## SE-001 — `.env.example` created by copying the live `.env`
 
@@ -82,3 +83,23 @@
 - `review`: curl/probe commands against prod with real identifiers
 
 **Evidence.** footgun #12
+
+## SE-005 — A static build publishes the server's own source, credentials included
+
+*Severity:* **critical** · *Stacks:* secrets, deploy, javascript, nginx
+
+**Symptom.** `curl https://site/contact/feedback_server.py` returned 200 with `ADMIN_PASSWORD = '...'` and the Flask `SECRET_KEY` in plain text. The PHP admin panel's source and a shell script that echoed the same password were served the same way.
+
+**Root cause.** The bundler's copy step listed a directory of operator scripts into the output directory the web server serves as static files. Python and PHP are not executed there, so the request falls through to the static handler and returns the file verbatim. The admin panel had therefore never worked — getting its source back over HTTP is the proof.
+
+**Resolution.** Drop them from the copy patterns and run operator scripts outside the document root. Rotate every credential the file carried: deleting the file does not un-publish what was already fetched, and the value survives in git history. Read the access log to see who fetched those paths.
+
+**Prevention.** Assert the build output contains no server-side source, and deny those suffixes at the web server as defence in depth.
+
+**How it is checked.**
+
+- `regex`: `from:\s*['\"][^'\"]*\.(py|php|sh|env|ini|bak)['\"]`
+- `shell`: `find dist -regex '.*\.\(py\|php\|sh\|env\|ini\|bak\)$'`
+- `ci`: fetch each server-source path from the deployed site and require 404
+
+**Evidence.** retirement_calculator_au (2026-09-20 audit): four files served 200 from /contact/ before the copy patterns were removed

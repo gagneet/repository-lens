@@ -14,6 +14,8 @@
 | TS-008 | medium | `||` versus `??`, and `==` |
 | TS-009 | low | Shallow spread copies, and a lossy `JSON` round-trip |
 | TS-010 | medium | Integers above 2^53 lose precision in JSON |
+| TS-011 | high | `Number.isFinite(Number(x))` accepts null, '' and [] as zero |
+| TS-012 | high | A bounds check that is always true makes the rest of the condition dead |
 
 ## TS-001 — A wrong prop name in `.jsx` gives the child `undefined`, and gated UI disappears
 
@@ -84,7 +86,10 @@
 
 **How it is checked.**
 
-- `regex`: `toFixed\(2\)|parseFloat\(.*(amount|price|total|balance)`
+- `regex`: `parseFloat\(.*(amount|price|total|balance|salary|cost|income)`
+- `ast`: arithmetic on a money-typed binding, not a formatting call on one
+
+**Evidence.** retirement_calculator_au (2026-09-20): every one of 20 'toFixed(2)' matches was display formatting; none was money arithmetic
 
 **Sources.** <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number/toFixed>
 
@@ -121,6 +126,8 @@
 **How it is checked.**
 
 - `regex`: `\.sort\(\)`
+
+**Evidence.** retirement_calculator_au (2026-09-20): Object.keys(versions).sort().reverse() ranked '2026.1' above '2.4.0'
 
 **Sources.** <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/sort>
 
@@ -196,3 +203,43 @@
 - `review`: int fields mapped to BIGINT in API responses
 
 **Sources.** <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number/MAX_SAFE_INTEGER>
+
+## TS-011 — `Number.isFinite(Number(x))` accepts null, '' and [] as zero
+
+*Severity:* **high** · *Stacks:* javascript, typescript
+
+**Symptom.** A confidence that had not been measured yet rendered as a measured `0%` — the worst possible reading of a missing value. The guard looked like a validity check.
+
+**Root cause.** `Number(null)`, `Number('')`, `Number(' ')`, `Number([])` and `Number(false)` are all `0`, and `0` is finite. `Number.isFinite` answers "is this a finite number", never "did the caller supply one".
+
+**Resolution.** Test the input rather than its coercion: `typeof x === 'number' && Number.isFinite(x)`, or reject nullish and empty explicitly before coercing. Render a missing value as "not assessed", not as zero.
+
+**Prevention.** "Has a value been supplied" and "is the value in range" are two questions; a parse helper that answers only the second needs a nullish guard in front of it.
+
+**How it is checked.**
+
+- `regex`: `Number\.isFinite\(\s*(Number|parseFloat|parseInt)\(`
+- `review`: a coerce-then-range-check helper reached by a value that may be null
+
+**Evidence.** retirement_calculator_au (2026-09-20 audit): parseConfidence(null) returned 0, which reached the comparison table as '0%'
+
+**Sources.** <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number/isFinite>
+
+## TS-012 — A bounds check that is always true makes the rest of the condition dead
+
+*Severity:* **high** · *Stacks:* javascript, typescript
+
+**Symptom.** `const passes = target <= 1 || (measured !== undefined ? measured >= target : true)`. A probability is always `<= 1`, so the right-hand side never ran and the user's confidence requirement was ignored on every code path. It had shipped, with tests — all of which asserted the `true` result.
+
+**Root cause.** The guard was written against the wrong bound. The author meant "no target was set" (`<= 0`) and wrote "this is a probability" (`<= 1`).
+
+**Resolution.** Correct the bound, and separate "the condition does not apply" from "the condition passed" so the caller can tell which happened.
+
+**Prevention.** For every short-circuit guard, write the test that makes the right-hand side matter. A branch no test can make false is dead code, and a suite that only asserts the passing result cannot see it.
+
+**How it is checked.**
+
+- `regex`: `<=\s*1(\.0)?\s*\|\||>=\s*0(\.0)?\s*\|\|`
+- `test`: per short-circuit guard, one case making the left operand false and asserting on the right
+
+**Evidence.** retirement_calculator_au (2026-09-20 audit): evaluateEngineGoal's passesConfidence returned true for a 99% target against a measured 1%

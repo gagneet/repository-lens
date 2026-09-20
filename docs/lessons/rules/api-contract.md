@@ -16,6 +16,7 @@
 | AC-010 | high | Missing data rendered as a confident zero or verdict |
 | AC-011 | medium | `.catch(() => {})` plus a loading fallback means a failure looks like loading forever |
 | AC-012 | medium | Hardcoded 'now': the year, relative labels, currency formatting |
+| AC-013 | high | A field name that states neither its unit nor its time base |
 
 ## AC-001 — A double `/api/api` prefix on the axios base URL
 
@@ -232,7 +233,26 @@
 **How it is checked.**
 
 - `regex`: `\b(19|20)\d{2}\b assigned to a year-like identifier`
-- `regex`: `[`'\"]\$\$\{|>\$\{`
+- `regex`: `[`'\"]\$\$\{|>\s*\$\$\{`
 - `regex`: `Intl\.NumberFormat\('en-[A-Z]{2}' (outside the owner)`
 
-**Evidence.** 21771129c; 6cb1e8cec; 9ccab84da; 6f6a4ab7f
+**Evidence.** 21771129c; 6cb1e8cec; 9ccab84da; 6f6a4ab7f; retirement_calculator_au (2026-09-20): the un-escaped '>${' arm matched 20 chart/label interpolations and no dates
+
+## AC-013 — A field name that states neither its unit nor its time base
+
+*Severity:* **high** · *Stacks:* javascript, api-contract
+
+**Symptom.** `estateAtLifespan` held nominal dollars when one code path wrote it and inflation-adjusted present-value dollars when another did, and both wrote the same key into the same persisted payload. Comparing it against a present-value target overstated it by the plan's whole inflation factor. Separately, a balance measured at the planning age was discounted over the years-to-retirement instead, overstating it 1.9x.
+
+**Root cause.** The name said WHEN the value is measured but not WHAT it is measured in, and no single function owned the conversion. Two producers of "the same" field disagreed, and nothing compared them.
+
+**Resolution.** Put both the unit and the time base in the name, convert in exactly one place, and derive a discount horizon from the two ages rather than reusing whichever span variable is already in scope.
+
+**Prevention.** Two quantities that cannot be added are not the same field. Name them apart, and keep the conversion at one boundary.
+
+**How it is checked.**
+
+- `review`: grep every writer of a shared payload key and confirm they agree on units
+- `test`: assert a known input yields the documented unit on every path that writes the field
+
+**Evidence.** retirement_calculator_au (2026-09-20 audit): reverse planner and the forward-projection bridge wrote estateAtLifespan in different units
