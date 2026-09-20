@@ -13,10 +13,32 @@ repository. `pyproject.toml` still says 0.3.0.
 ### Added
 
 **Technical lessons learnt catalogue** (see `docs/lessons/README.md`)
-- `docs/lessons/technical-lessons-learnt.json`: 260 stack-level lessons (Next.js/TypeScript, FastAPI/Python,
+- `repolens report --only lessons` (also in the default tool list) matches the catalogue
+  against the repository under report. Only recipes that are safe to run without judgement
+  are run — a recipe whose scope or condition is written for a person is left as
+  documentation — and every finding is low confidence, capped at P2 and at 20 matches per
+  lesson, so no lesson can fail `--check`. Lessons are scoped to the stacks the repository
+  shows evidence of.
+- `lessons.md` is written beside the report whenever the `lessons` tool runs: every lesson
+  that applies to the repository's stacks, each marked checked-and-matched, checked-and-clear,
+  or **not checked here**. About two thirds of applicable lessons have no recipe this tool
+  will run, and the file exists so their absence from the report is not read as a pass.
+- `[report] sarif_commands`: run any analyser that writes SARIF (trivy, gitleaks, grype,
+  checkov, ...) and import its findings, each as its own tool run. A missing binary is
+  SKIPPED, a crash is an ERROR, and a clean exit that wrote no document is an ERROR.
+  Selected as the tool `sarif-commands`, so `--only` scopes it.
+
+### Changed
+
+- `semgrep` joins the default tool list. Its adapter refuses a registry config, so it is
+  offline by construction; unconfigured it reports itself skipped with the reason, which is
+  more use than being silently absent. `osv-scanner` and `pip-audit` stay `--with`-only
+  because they query api.osv.dev and PyPI, and a default report must not leave the machine.
+- `repolens/lessons/catalogue.json`: 260 stack-level lessons (Next.js/TypeScript, FastAPI/Python,
   asyncio, PostgreSQL RLS and schema, Alembic, SQLAlchemy/asyncpg, MongoDB, multi-store consistency, security,
   CI gates, generated artefacts, deploy and secrets). Each records symptom, root cause, resolution,
-  prevention, detection recipes, evidence and sources, with repolens severities.
+  prevention, detection recipes, evidence and sources, with repolens severities. It ships as package
+  data so the `lessons` tool can read it inside a target repository; it was `docs/lessons/technical-lessons-learnt.json`.
 - `docs/lessons/index.html`: a browsable page over the catalogue that opens straight from disk
   (`file://`, no server): an overview, one page per category with prev/next, deep links to each lesson,
   search with severity and stack filters, and light/dark themes. It loads `technical-lessons-learnt.js`,

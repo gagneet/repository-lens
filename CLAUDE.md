@@ -255,6 +255,40 @@ left out of the fingerprint. `security.scan`/`performance.scan` apply both throu
 external ruff/bandit/semgrep, into one prioritised report under `.repolens/report/`.
 `report/sarif.py` imports external SARIF.
 
+The default tool list must stay offline: `osv-scanner` queries api.osv.dev and `pip-audit`
+queries PyPI, so both are `--with` only, and `impact` is out for cost. `semgrep` IS a default
+although it is optional to configure, because its adapter refuses a registry config and can
+only run local rules; until `semgrep_config` is set it reports itself SKIPPED with that
+reason, which a tool merely absent from the list cannot do.
+
+`[report] sarif_commands` is the seam for any analyser that writes SARIF (trivy, gitleaks,
+grype, checkov, hadolint): `{output}` in its argv becomes a temporary path, the document is
+read back through `report/sarif.py` (which opens nothing the document references), and each
+gets its own `ToolRun`, so a missing binary is SKIPPED and a crash is ERROR. An exit outside
+`ok_exit` (default `[0, 1]`, because scanners exit 1 for "found something"), an argv without
+`{output}`, and a clean exit that wrote no document are all errors: a tool that did not look
+must never read as a clean repository. It is selected by the tools list under the name
+`sarif-commands` — like `commands`, it is a `_PSEUDO_TOOLS` entry rather than an adapter, so
+`--only` scopes it and `--list-tools` shows it.
+
+The `lessons` tool (`report/lessons.py`) matches `repolens/lessons/catalogue.json` — 260
+stack-level traps, package data so it travels into a target repository — against the
+repository under report. It is precision-first in two ways that must not be relaxed
+casually. `runnable_pattern` refuses any recipe whose scope or condition is written for a
+person (a trailing `  -- in *.example` or `(outside the classifier)`, or prose in the body:
+two consecutive plain lowercase words): the regex is then only half the rule, and running
+that half reports the harmless general case everywhere. And every finding is
+`confidence="low"`, which caps it at P2 and so below the default `fail_on = "P1"`, with a
+20-match cap per lesson; a catalogue recipe is a prompt to go and look, never a verdict.
+Lessons are scoped to stacks the repository shows evidence of (suffixes, dependency
+manifests read bounded, `alembic/`, `.github/workflows`) and to the suffixes their category
+can match, and the walk drops untracked gitignored files like `python_ast.python_files`.
+`lessons.survey()` returns both the findings and the larger APPLICABLE set, and the runner
+writes that set to `lessons.md` beside the report: roughly two thirds of applicable lessons
+have no runnable recipe, and the file marks each one "not checked here" so silence about it
+is never read as a pass. `docs/lessons/` holds the browsable page and the generated rule
+packs; `export_lessons_learnt.py` regenerates both from the package copy.
+
 `report --require a,b` is an assertion by the invocation: a named tool that is skipped,
 errors or is not selected exits 1 in every mode and refuses `--update-baseline` (exit 2).
 `[report] require` only fails `--check`. `Context.executable` searches
@@ -317,5 +351,7 @@ build stamp.
 Docs are deliberately conservative. Capabilities not backed by an implementation and a
 regression test belong in `docs/roadmap.md`, not the README. Known open issues and pending
 work, each with its analysis, required fix and reason, are tracked in `docs/tasks.md`; move
-a task to its Resolved table (with the verifying test) when it lands. Scope limits are listed in
+a task to its Resolved table (with the verifying test) when it lands. `tasks/` holds the
+same kind of record for follow-ups a single feature left behind, one file per feature, so a
+change can land with its own debts written down instead of enlarging the audit register. Scope limits are listed in
 `analysis.LIMITS` and `docs/audit/`. Keep those in sync when behaviour changes.
