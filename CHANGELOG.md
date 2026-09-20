@@ -50,7 +50,7 @@ repository. `pyproject.toml` still says 0.3.0.
   offline by construction; unconfigured it reports itself skipped with the reason, which is
   more use than being silently absent. `osv-scanner` and `pip-audit` stay `--with`-only
   because they query api.osv.dev and PyPI, and a default report must not leave the machine.
-- `repolens/lessons/catalogue.json`: 260 stack-level lessons (Next.js/TypeScript, FastAPI/Python,
+- `repolens/lessons/catalogue.json`: 269 stack-level lessons (Next.js/TypeScript, FastAPI/Python,
   asyncio, PostgreSQL RLS and schema, Alembic, SQLAlchemy/asyncpg, MongoDB, multi-store consistency, security,
   CI gates, generated artefacts, deploy and secrets). Each records symptom, root cause, resolution,
   prevention, detection recipes, evidence and sources, with repolens severities. It ships as package

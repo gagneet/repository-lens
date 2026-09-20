@@ -275,7 +275,7 @@ must never read as a clean repository. It is selected by the tools list under th
 `sarif-commands` — like `commands`, it is a `_PSEUDO_TOOLS` entry rather than an adapter, so
 `--only` scopes it and `--list-tools` shows it.
 
-The `lessons` tool (`report/lessons.py`) matches `repolens/lessons/catalogue.json` — 260
+The `lessons` tool (`report/lessons.py`) matches `repolens/lessons/catalogue.json` — 269
 stack-level traps, package data so it travels into a target repository — against the
 repository under report. It is precision-first in two ways that must not be relaxed
 casually. `runnable_pattern` refuses any recipe whose scope or condition is written for a
