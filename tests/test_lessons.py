@@ -249,6 +249,55 @@ class Companion(Fixture):
         self.assertFalse((out / "lessons.md").exists())
 
 
+class EveryLessonCanReachTheFilesItIsAbout(unittest.TestCase):
+    """A lesson whose recipe searches markup is dead if its category only walks scripts.
+
+    The accessibility lessons were written against `role="tablist"` in HTML and a colour
+    token in CSS, and reported nothing at all: their category inherited the `frontend`
+    group, whose suffixes are script extensions only. Nothing failed -- the survey simply
+    never opened a .html file. These tests pin the coupling between what a recipe looks
+    for and what the walk is given.
+    """
+
+    def setUp(self):
+        self.data = load()
+        self.groups = {c["id"]: c["group"] for c in self.data["categories"]}
+
+    def test_accessibility_lessons_walk_markup_and_stylesheets(self):
+        for lesson in self.data["lessons"]:
+            if lesson["category"] != "accessibility":
+                continue
+            suffixes = lessons._suffixes_for(lesson, self.groups)
+            self.assertIn(".html", suffixes, lesson["id"])
+            self.assertIn(".css", suffixes, lesson["id"])
+
+    def test_a_recipe_naming_a_suffix_is_given_that_suffix(self):
+        """`<button` or `role=` can only match markup; `--token:` only a stylesheet."""
+        markers = ((("role=", "<button", "<div", "aria-", "<h["), ".html"),
+                   (("--ink", "@media", "color:"), ".css"))
+        for lesson in self.data["lessons"]:
+            suffixes = lessons._suffixes_for(lesson, self.groups)
+            for recipe in lesson["detection"]:
+                if recipe["kind"] != "regex" or lessons.runnable_pattern(recipe["recipe"]) is None:
+                    continue
+                for needles, suffix in markers:
+                    if any(n in recipe["recipe"] for n in needles):
+                        self.assertIn(suffix, suffixes,
+                                      f"{lesson['id']} searches for {needles} but never opens a {suffix} file")
+
+    def test_a_lesson_is_not_scoped_out_by_a_framework_it_does_not_need(self):
+        """AX-001 was tagged `react`, so a vanilla-HTML repo -- exactly the kind that
+        still hand-writes a broken tablist -- never had the lesson applied to it."""
+        known = {s for values in lessons._SUFFIX_STACKS.values() for s in values}
+        known |= {s for values in lessons._DEPENDENCY_STACKS.values() for s in values}
+        for lesson in self.data["lessons"]:
+            if lesson["category"] != "accessibility":
+                continue
+            detectable = [s for s in lesson["stacks"] if s in known]
+            self.assertNotIn("react", detectable, lesson["id"])
+            self.assertNotIn("tailwind", detectable, lesson["id"])
+
+
 class DefaultToolList(unittest.TestCase):
     def test_no_networked_tool_is_on_by_default(self):
         """CLAUDE.md: repolens must not touch the network. osv-scanner queries api.osv.dev
