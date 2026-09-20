@@ -48,19 +48,20 @@ it cannot silently present a degraded result.
 
 ### As a standalone tool
 
-The wheel is pure Python (`py3-none-any`) and the extras publish wheels for Linux and
-macOS, so an isolated install puts `repolens` on `PATH` without touching the Python
-environment of the repository being analyzed:
+The wheel is pure Python (`py3-none-any`), so the same one installs on Linux and macOS.
+An isolated install keeps repolens's extras out of the environment of the project being
+analyzed and puts `repolens` on `PATH`:
 
 ```bash
-python -m build                                            # writes dist/
-pipx install 'dist/repolens-0.3.0-py3-none-any.whl[stack,api]'
+python -m build                                    # writes dist/ (needs the `build` package)
+pipx install 'dist/repolens-<version>-py3-none-any.whl[stack,api]'
 repolens --root /path/to/checkout analyze --out .repolens/analysis
 ```
 
-`uv tool install` works the same way, and `bin/repolens` runs the tool from a checkout
-with no install at all. Building a release, including the one line a version bump
-touches, is in [docs/installation.md](docs/installation.md#building-a-release).
+`uv tool install` accepts the same argument, and `bin/repolens` runs the CLI from a
+checkout with nothing installed at all. Building a release, including the one line a
+version bump touches, is in
+[docs/installation.md](docs/installation.md#building-a-release).
 
 ## Quick start
 

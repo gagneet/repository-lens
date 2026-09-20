@@ -66,51 +66,75 @@ python -m pip install build          # once, in the build environment
 python -m build                      # dist/repolens-<version>-py3-none-any.whl and the sdist
 ```
 
-The wheel is `py3-none-any`: the package itself has no compiled extension and no required
-runtime dependency, so one wheel serves Linux and macOS, and the `stack` extras
-(Tree-sitter grammars, SQLGlot) publish platform wheels for both, Apple Silicon included.
-The package data that has to travel with it — `repolens/templates/`, `repolens/rules/*.md`
-and `repolens/lessons/catalogue.json`, which `init`, `rules` and `report --only lessons`
-read inside a *target* repository — is declared in `[tool.setuptools.package-data]`. When
-a new data file is added under `repolens/`, add it there too, or it will work from a
-checkout and be missing from the wheel.
+`python -m build` creates an isolated environment and installs the `[build-system]
+requires` into it, so the setuptools floor (77, for PEP 639 license metadata) is satisfied
+for you. Only `--no-build-isolation`, or a direct `setuptools.build_meta` call, uses the
+setuptools already installed and fails on an older one.
+
+The wheel is `py3-none-any`: the package has no compiled extension and no required runtime
+dependency, so the same wheel installs on Linux and macOS. That says nothing about the
+optional extras — `stack` and `api` pull third-party packages, and whether a given Python
+version and platform gets a prebuilt wheel or a source build is theirs to decide, not
+repolens's.
+
+The package data that has to travel with the wheel is declared in
+`[tool.setuptools.package-data]`: `repolens/templates/`, `repolens/rules/*.md` and
+`repolens/lessons/catalogue.json`. `bootstrap.py`, `rules/__init__.py` and
+`lessons/__init__.py` read them through `importlib.resources.files(__package__)`, which
+works inside a wheel, but only for files that declaration lists. A new data file under
+`repolens/` that is not added there works from a checkout and is missing once installed.
+The sdist carries the same data, plus `LICENSE`, `README.md` and `tests/`.
 
 The version has one home, `repolens/__init__.py`. `pyproject.toml` declares
 `dynamic = ["version"]` and reads that attribute, so the wheel filename,
 `repolens --version`, the provenance stamp in every report and the API's OpenAPI
-version cannot drift apart.
+version cannot disagree.
+
+That matters here for a reason the tags record: `v0.2.0`, `v0.3.0` and `v0.4.0` all point
+at commits whose `__version__` is `0.3.0`, so a wheel built from any of them is named
+`repolens-0.3.0`, and a report produced by the newest one is stamped with the oldest
+number. Three releases cannot be told apart by anything the tool itself prints. Nothing
+retroactively fixes those tags; step 1 below is what stops the next one repeating it.
 
 Releasing:
 
-1. Bump `__version__` in `repolens/__init__.py`.
+1. Bump `__version__` in `repolens/__init__.py`. The next release is the first that can
+   be identified from its own output, so it should be numbered past `v0.4.0`.
 2. Move the `[Unreleased]` section of [CHANGELOG.md](../CHANGELOG.md) under the new
    number, with upgrade notes, and move any documentation section the release removed
    into `docs/history/` verbatim.
 3. `python -m unittest discover -s tests -q` with the extras installed — without them
    about a third of the suite skips.
 4. `repolens api export --out docs/api && git diff --exit-code -- docs/api`.
-5. Tag, then `python -m build`.
+5. `python -m build`, then check the artifact against the tag you are about to push:
+   the wheel filename and `repolens --version` from an install of it must both be the
+   number being tagged.
 
 ## Installing it as a standalone tool
 
-A checkout is not needed to run the tool. An isolated install keeps repolens out of the
-Python environment of the repository being analyzed, which matters because the scanner
-must never share an environment it might be asked to read:
+A checkout is not needed to run the tool. An isolated install keeps repolens's own extras
+(Tree-sitter grammars, SQLGlot, FastAPI) out of the environment of the project being
+analyzed, and still puts `repolens` on `PATH`:
 
 ```bash
-pipx install 'dist/repolens-0.3.0-py3-none-any.whl[stack,api]'
-# or straight from the source:
-pipx install 'repolens[stack,api] @ git+https://github.com/<owner>/repository-lens@v0.3.0'
+pipx install 'dist/repolens-<version>-py3-none-any.whl[stack,api]'
+# or from the source repository, at a tag:
+pipx install 'repolens[stack,api] @ git+https://github.com/<owner>/repository-lens@<tag>'
 repolens --root /path/to/checkout analyze --out .repolens/analysis
 ```
 
-`uv tool install` takes the same arguments. `bin/repolens` runs the tool from a checkout
-with nothing installed at all, which is what a vendored copy uses.
+Quote the argument: the extras in `…whl[stack,api]` are a pip requirement, not a shell
+glob, so an unquoted `dist/repolens-*.whl[stack,api]` is read by the shell instead.
+`uv tool install` accepts the same two forms.
+
+`bin/repolens` is the third option: it runs the CLI from a checkout with nothing installed
+at all, by putting the checkout on `sys.path`. Without the `stack` extras in the
+interpreter that runs it, `analyze` still refuses to produce a degraded result.
 
 There is no frozen single-file build (PyInstaller, zipapp). `provenance._source_sha256`
-hashes the package's files on disk to stamp each output, so a frozen build would need
-work for no gain over an isolated install; it is only worth doing for a machine with no
-Python 3.11.
+walks the installed package's files on disk to stamp every output with a hash of the code
+that produced it, so a frozen build would have to keep those files readable anyway. It is
+worth doing only for a machine with no Python 3.11.
 
 ## Bootstrap a target repository
 

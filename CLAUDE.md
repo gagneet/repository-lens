@@ -13,7 +13,7 @@ python -m compileall -q repolens tests                 # syntax check used in th
 bin/repolens <command>                                 # run from a checkout without installing
 repolens analyze --out .repolens/analysis              # scan this checkout
 repolens api export --out docs/api                     # regenerate OpenAPI + Postman contracts
-python -m build                                        # wheel + sdist (needs the `build` package)
+python -m build                                        # wheel + sdist (needs `build`; setuptools>=77)
 ```
 
 Without the `stack`/`api`/`test` extras about a third of the suite skips (`skipUnless` on
@@ -31,7 +31,8 @@ There is no lint config in `pyproject.toml`. `requirements-ci.txt` pins ruff/ban
 Its comments cover both this checkout and a vendored copy (a consumer typically keeps one at
 `tools/repolens`). The package version lives only in `repolens/__init__.py`;
 `pyproject.toml` reads it through `[tool.setuptools.dynamic]`, so a release bumps that one
-line (`docs/installation.md`, "Building a release"). Pydantic model docstrings in
+line (`docs/installation.md`, "Building a release"; the tags up to `v0.4.0` all carry
+`0.3.0`, which is the drift that closes). Pydantic model docstrings in
 `api/app.py` become OpenAPI descriptions, so editing them also needs `repolens api
 export`. Record user-visible changes and upgrade notes in `CHANGELOG.md`. Doc sections a release removes go
 under `docs/history/`, verbatim except that identifiers of other repositories are generalised.
