@@ -2,7 +2,7 @@
 
     repolens report                         the default tool set -> .repolens/report/
     repolens report --only security,performance
-    repolens report --with impact,semgrep   add the slow or networked tools
+    repolens report --with impact,osv-scanner   add the slow or networked tools
     repolens report --update-baseline       accept today's findings as known
     repolens report --check --fail-on P1    CI: fail on a NEW finding at P1 or worse
 
@@ -32,6 +32,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -51,7 +52,14 @@ DEFAULTS: dict[str, Any] = {
     "out_dir": ".repolens/report",
     "baseline": ".repolens/report_baseline.json",
     "tools": ["security", "performance", "migrations", "featuretrace", "owners", "gates", "artefacts",
-              "docstrings", "commands", "ruff", "bandit"],
+              "docstrings", "commands", "sarif-commands", "ruff", "bandit",
+              # semgrep is in the defaults although it is optional: its adapter REFUSES a
+              # registry config, so it can only ever run against local rules, and until
+              # `semgrep_config` is set it reports itself SKIPPED with the reason. A tool
+              # that is silently not in the list looks the same as one that found nothing.
+              # osv-scanner and pip-audit stay out because they query api.osv.dev and PyPI,
+              # and a default report must not reach the network.
+              "semgrep"],
     "fail_on": "P1",
     # Tools whose being SKIPPED fails --check (say, ruff and bandit on a CI image that
     # installs them). Empty by default: a laptop without bandit still gets a report.
@@ -61,6 +69,12 @@ DEFAULTS: dict[str, Any] = {
     "command_timeout_seconds": 300,
     # [{name, run = [argv], severity, category, remedy}] — a non-zero exit is one finding.
     "commands": [],
+    # [{name, run = [argv] containing {output}, ok_exit = [...]}] — any analyser that writes
+    # SARIF joins the report per finding instead of as one pass/fail. `{output}` is replaced
+    # with a temporary path the tool writes to. This is the seam for trivy, gitleaks, grype,
+    # checkov, hadolint and anything else that speaks SARIF; each keeps its own ToolRun, so a
+    # missing binary is SKIPPED and a crash is ERROR, never a silent zero findings.
+    "sarif_commands": [],
     "ruff_select": ["S", "ASYNC", "B"],
     # B008 flags a call in an argument default — which is FastAPI's documented
     # `Depends()` idiom, so on a FastAPI codebase it is two thousand false positives.
@@ -70,7 +84,14 @@ DEFAULTS: dict[str, Any] = {
     # fingerprint -> the reason it is accepted. Reviewed, not ignored: it stays visible here.
     "suppress": {},
 }
-OPTIONAL_TOOLS = ("impact", "semgrep", "osv-scanner", "pip-audit")
+#: Not in the default list: `impact` re-scans the whole graph, and osv-scanner/pip-audit
+#: query api.osv.dev and PyPI. Enable those deliberately with `--with`, knowing they leave
+#: the machine. `semgrep` is optional to CONFIGURE but is in the default list, because it
+#: is offline by construction here and says so when it is not configured.
+OPTIONAL_TOOLS = ("impact", "osv-scanner", "pip-audit")
+#: Selected by name like an adapter, but configured rather than implemented: each expands
+#: to zero or more runs from `[report] commands` / `[report] sarif_commands`.
+_PSEUDO_TOOLS = ("commands", "sarif-commands")
 
 
 class Skip(Exception):
@@ -565,6 +586,57 @@ def _command_run(ctx: Context, spec: dict[str, Any], name: str) -> ToolRun:
     return run
 
 
+def _sarif_command_run(ctx: Context, spec: dict[str, Any], name: str) -> list[ToolRun]:
+    """Run one analyser that writes SARIF, then import what it wrote.
+
+    `{output}` in the argv is replaced with a temporary file path. The file is read back
+    through `import_sarif`, which never opens anything the document references, so this
+    adds a tool's findings without giving it a say in what repolens reads.
+    """
+    from .sarif import import_sarif
+    if not any("{output}" in part for part in spec["run"]):
+        return [ToolRun(name, error="the run argv must contain {output}, the SARIF path to write")]
+    ok_exit = tuple(spec.get("ok_exit", (0, 1)))  # scanners exit 1 for "found something"
+    with tempfile.TemporaryDirectory() as workspace:
+        output = Path(workspace) / "report.sarif"
+        argv = [part.replace("{output}", str(output)) for part in spec["run"]]
+        argv = [ctx.python() if part == "{python}" else part for part in argv]
+        start = time.time()
+        try:
+            proc = subprocess.run(argv, cwd=ctx.root, capture_output=True, text=True,
+                                  timeout=ctx.section["command_timeout_seconds"])
+        except FileNotFoundError:
+            return [ToolRun(name, skipped=f"{argv[0]} not found")]
+        except subprocess.TimeoutExpired:
+            return [ToolRun(name, error="timed out", seconds=time.time() - start)]
+        seconds = time.time() - start
+        if proc.returncode not in ok_exit:
+            detail = _tail((proc.stderr or "") + "\n" + (proc.stdout or ""), 4, 400)
+            return [ToolRun(name, error=f"exited {proc.returncode}: {detail}", seconds=seconds)]
+        if not output.is_file():
+            # Exit 0 and no document is a tool that did not look, not a clean repository.
+            return [ToolRun(name, error="the command exited cleanly but wrote no SARIF to {output}",
+                            seconds=seconds)]
+        runs = import_sarif(output, ctx.root)
+        for run in runs:
+            # One run keeps the configured name, so `--require gitleaks` can match it. A
+            # document with several runs qualifies each by its driver.
+            run.tool = name if len(runs) == 1 else f"{name}:{run.tool}"
+            run.seconds = seconds
+        return runs or [ToolRun(name, seconds=seconds)]
+
+
+def _sarif_command_runs(ctx: Context) -> list[ToolRun]:
+    runs = []
+    for spec in ctx.section["sarif_commands"]:
+        name = spec.get("name") or "sarif"
+        try:
+            runs.extend(_sarif_command_run(ctx, spec, name))
+        except (Exception, SystemExit) as exc:  # one bad entry must not sink the report
+            runs.append(ToolRun(name, error=f"{type(exc).__name__}: {exc}"[:400]))
+    return runs
+
+
 def _command_runs(ctx: Context) -> list[ToolRun]:
     runs = []
     for spec in ctx.section["commands"]:
@@ -616,12 +688,12 @@ def main(argv: list[str] | None = None, *, config: Config | None = None, prog: s
     ctx = Context(cfg, section)
     if args.list_tools:
         print("default: " + ", ".join(section["tools"]))
-        print("all:     " + ", ".join([*ADAPTERS, "commands"]))
+        print("all:     " + ", ".join([*ADAPTERS, *_PSEUDO_TOOLS]))
         return 0
 
     tools = args.only.split(",") if args.only else list(section["tools"])
     tools += [t for t in args.extra.split(",") if t and t not in tools]
-    unknown = [t for t in tools if t not in ADAPTERS and t != "commands"]
+    unknown = [t for t in tools if t not in ADAPTERS and t not in _PSEUDO_TOOLS]
     if unknown:
         print(f"unknown tool(s): {', '.join(unknown)}; see --list-tools", file=sys.stderr)
         return 2
@@ -641,6 +713,12 @@ def main(argv: list[str] | None = None, *, config: Config | None = None, prog: s
         if name == "commands":
             runs.extend(_command_runs(ctx))
             print(f"  commands      {time.time() - start:6.1f}s", file=sys.stderr)
+            continue
+        if name == "sarif-commands":
+            # Selected like any other tool, so `--only lessons` does not shell out to
+            # trivy and `--list-tools` shows the seam exists.
+            runs.extend(_sarif_command_runs(ctx))
+            print(f"  sarif-commands{time.time() - start:6.1f}s", file=sys.stderr)
             continue
         try:
             run = ToolRun(name, findings=ADAPTERS[name](ctx))

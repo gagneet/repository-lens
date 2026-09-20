@@ -85,6 +85,97 @@ class SarifTests(unittest.TestCase):
             import_sarif(self.save(), self.root)
 
 
+class SarifCommandTests(unittest.TestCase):
+    """`[report] sarif_commands` runs an analyser that writes SARIF and imports what it
+    wrote, so trivy, gitleaks, grype and anything else that speaks SARIF joins the report
+    finding by finding, with its own ToolRun: missing binary SKIPPED, crash ERROR."""
+
+    DOC = {"version": "2.1.0", "runs": [{"tool": {"driver": {"name": "fakescanner"}},
+           "results": [{"ruleId": "LEAK", "level": "error", "message": {"text": "a token"},
+                        "locations": [{"physicalLocation": {"artifactLocation": {"uri": "src/a.ts"},
+                                                            "region": {"startLine": 3}}}]}]}]}
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+
+    def tool(self, body: str) -> Path:
+        """A stand-in analyser, so these tests do not need trivy or gitleaks installed."""
+        path = self.root / "fake_tool.py"
+        path.write_text(body, encoding="utf-8")
+        return path
+
+    def runs(self, spec: dict) -> list:
+        from repolens.report.runner import Context, _sarif_command_runs
+        from repolens.config import merge
+        from repolens.report.runner import DEFAULTS
+        cfg = Config(self.root, {"report": {"sarif_commands": [spec]}})
+        return _sarif_command_runs(Context(cfg, merge(DEFAULTS, cfg.section("report"))))
+
+    def test_findings_are_imported_under_the_configured_name(self):
+        tool = self.tool("import json, sys\n"
+                         f"json.dump({self.DOC!r}, open(sys.argv[1], 'w'))\n")
+        [run] = self.runs({"name": "fakescanner", "run": ["{python}", str(tool), "{output}"]})
+        self.assertEqual(run.tool, "fakescanner")
+        self.assertEqual((run.findings[0].file, run.findings[0].line), ("src/a.ts", 3))
+        self.assertEqual(run.findings[0].severity, "high")
+
+    def test_a_missing_binary_is_skipped_not_a_clean_result(self):
+        [run] = self.runs({"name": "gitleaks", "run": ["definitely-not-installed", "{output}"]})
+        self.assertIn("not found", run.skipped)
+        self.assertEqual(run.findings, [])
+        self.assertFalse(run.error)
+
+    def test_an_unexpected_exit_is_an_error(self):
+        tool = self.tool("import sys\nsys.exit(7)\n")
+        [run] = self.runs({"name": "fakescanner", "run": ["{python}", str(tool), "{output}"]})
+        self.assertIn("exited 7", run.error)
+
+    def test_exit_one_is_found_something_not_a_failure(self):
+        """Scanners conventionally exit 1 when they found a result; treating that as a
+        crash would drop every run that had something to say."""
+        tool = self.tool("import json, sys\n"
+                         f"json.dump({self.DOC!r}, open(sys.argv[1], 'w'))\n"
+                         "sys.exit(1)\n")
+        [run] = self.runs({"name": "fakescanner", "run": ["{python}", str(tool), "{output}"]})
+        self.assertFalse(run.error)
+        self.assertEqual(len(run.findings), 1)
+
+    def test_a_clean_exit_that_wrote_nothing_is_an_error(self):
+        """Exit 0 and no document is a tool that did not look, not a clean repository."""
+        tool = self.tool("pass\n")
+        [run] = self.runs({"name": "fakescanner", "run": ["{python}", str(tool), "{output}"]})
+        self.assertIn("wrote no SARIF", run.error)
+
+    def test_an_argv_without_the_output_placeholder_is_rejected(self):
+        [run] = self.runs({"name": "fakescanner", "run": ["true"]})
+        self.assertIn("{output}", run.error)
+
+    def test_the_seam_is_selected_like_any_other_tool(self):
+        """It is configuration, not an implicit side effect: `--only lessons` must not
+        shell out to a configured scanner, and `--list-tools` must say the seam exists."""
+        from repolens.report.runner import _PSEUDO_TOOLS, main
+        self.assertIn("sarif-commands", _PSEUDO_TOOLS)
+        tool = self.tool("import sys\nopen('" + (self.root / "ran").as_posix() + "', 'w').close()\n"
+                         "sys.exit(9)\n")
+        cfg = Config(self.root, {"report": {"sarif_commands": [
+            {"name": "fakescanner", "run": ["{python}", str(tool), "{output}"]}]}})
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer), contextlib.redirect_stderr(buffer):
+            main(["--only", "migrations", "--out", str(self.root / "out")], config=cfg)
+        self.assertFalse((self.root / "ran").exists())
+        with contextlib.redirect_stdout(buffer), contextlib.redirect_stderr(buffer):
+            main(["--only", "sarif-commands", "--out", str(self.root / "out")], config=cfg)
+        self.assertTrue((self.root / "ran").exists())
+
+    def test_unparsable_sarif_is_an_error_on_that_tool_alone(self):
+        tool = self.tool("import sys\nopen(sys.argv[1], 'w').write('not json')\n")
+        [run] = self.runs({"name": "fakescanner", "run": ["{python}", str(tool), "{output}"]})
+        self.assertTrue(run.error)
+        self.assertEqual(run.findings, [])
+
+
 class AnalysisSarifTests(unittest.TestCase):
     @unittest.skipUnless(all(importlib.util.find_spec(m) for m in ("tree_sitter", "sqlglot")), "install repolens[stack]")
     def test_a_python_file_the_checks_never_opened_is_not_a_successful_run(self):

@@ -74,12 +74,31 @@ tsconfig = "@@TSCONFIG@@"
 [report]
 title = "@@NAME@@ code health report"
 
+# semgrep is in the default tool list but refuses a registry config, so it only runs once
+# this points at rules ON DISK. Until then it reports itself skipped, with the reason.
+# semgrep_config = "tools/semgrep-rules"
+
+# `osv-scanner` and `pip-audit` are NOT in the default list: they query api.osv.dev and
+# PyPI. Add them deliberately, knowing the scan leaves the machine:
+#   repolens report --with osv-scanner,pip-audit
+# requirements = ["requirements.txt"]   # pip-audit needs this
+
 # A repository's own checks join the report: a non-zero exit is one finding, and a crash
 # is an error. Check that a command CAN exit non-zero before relying on it.
 # [[report.commands]]
 # name = "typecheck"
 # run = ["npx", "tsc", "--noEmit"]
 # category = "correctness"
+
+# Any analyser that writes SARIF joins the report finding by finding, with its own run:
+# a missing binary is SKIPPED and a crash is an ERROR, never a silent zero. `{output}` is
+# replaced with a temporary path for the tool to write to.
+# [[report.sarif_commands]]
+# name = "gitleaks"
+# run = ["gitleaks", "dir", ".", "--report-format", "sarif", "--report-path", "{output}"]
+# [[report.sarif_commands]]
+# name = "trivy"
+# run = ["trivy", "fs", "--quiet", "--format", "sarif", "--output", "{output}", "."]
 @@CSHARP@@
 # ── Validation gates ─────────────────────────────────────────────────────────────
 # Every validation script is run by something, and every audit can fail.
