@@ -57,6 +57,61 @@ repolens --root /path/to/checkout serve
 The service listens on `127.0.0.1` and retains only the latest scan in memory. See
 [`api/README.md`](api/README.md) for Swagger/OpenAPI and Postman usage.
 
+## Building a release
+
+The build backend is setuptools with no plugin, so a wheel needs no script of its own:
+
+```bash
+python -m pip install build          # once, in the build environment
+python -m build                      # dist/repolens-<version>-py3-none-any.whl and the sdist
+```
+
+The wheel is `py3-none-any`: the package itself has no compiled extension and no required
+runtime dependency, so one wheel serves Linux and macOS, and the `stack` extras
+(Tree-sitter grammars, SQLGlot) publish platform wheels for both, Apple Silicon included.
+The package data that has to travel with it — `repolens/templates/`, `repolens/rules/*.md`
+and `repolens/lessons/catalogue.json`, which `init`, `rules` and `report --only lessons`
+read inside a *target* repository — is declared in `[tool.setuptools.package-data]`. When
+a new data file is added under `repolens/`, add it there too, or it will work from a
+checkout and be missing from the wheel.
+
+The version has one home, `repolens/__init__.py`. `pyproject.toml` declares
+`dynamic = ["version"]` and reads that attribute, so the wheel filename,
+`repolens --version`, the provenance stamp in every report and the API's OpenAPI
+version cannot drift apart.
+
+Releasing:
+
+1. Bump `__version__` in `repolens/__init__.py`.
+2. Move the `[Unreleased]` section of [CHANGELOG.md](../CHANGELOG.md) under the new
+   number, with upgrade notes, and move any documentation section the release removed
+   into `docs/history/` verbatim.
+3. `python -m unittest discover -s tests -q` with the extras installed — without them
+   about a third of the suite skips.
+4. `repolens api export --out docs/api && git diff --exit-code -- docs/api`.
+5. Tag, then `python -m build`.
+
+## Installing it as a standalone tool
+
+A checkout is not needed to run the tool. An isolated install keeps repolens out of the
+Python environment of the repository being analyzed, which matters because the scanner
+must never share an environment it might be asked to read:
+
+```bash
+pipx install 'dist/repolens-0.3.0-py3-none-any.whl[stack,api]'
+# or straight from the source:
+pipx install 'repolens[stack,api] @ git+https://github.com/<owner>/repository-lens@v0.3.0'
+repolens --root /path/to/checkout analyze --out .repolens/analysis
+```
+
+`uv tool install` takes the same arguments. `bin/repolens` runs the tool from a checkout
+with nothing installed at all, which is what a vendored copy uses.
+
+There is no frozen single-file build (PyInstaller, zipapp). `provenance._source_sha256`
+hashes the package's files on disk to stamp each output, so a frozen build would need
+work for no gain over an isolated install; it is only worth doing for a machine with no
+Python 3.11.
+
 ## Bootstrap a target repository
 
 `init` detects common source/test/migration directories and writes a starter
