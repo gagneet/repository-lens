@@ -88,7 +88,9 @@ DEFAULTS: dict[str, Any] = {
 #: query api.osv.dev and PyPI. Enable those deliberately with `--with`, knowing they leave
 #: the machine. `semgrep` is optional to CONFIGURE but is in the default list, because it
 #: is offline by construction here and says so when it is not configured.
-OPTIONAL_TOOLS = ("impact", "osv-scanner", "pip-audit")
+OPTIONAL_TOOLS = ("impact", "semgrep", "osv-scanner", "pip-audit")
+#: How to install a scanner that is not on PyPI; the rest are `pip install <name>`.
+_INSTALL_HINTS = {"osv-scanner": "a release binary from https://github.com/google/osv-scanner/releases"}
 #: Selected by name like an adapter, but configured rather than implemented: each expands
 #: to zero or more runs from `[report] commands` / `[report] sarif_commands`.
 _PSEUDO_TOOLS = ("commands", "sarif-commands")
@@ -144,7 +146,8 @@ class Context:
         search = os.pathsep.join([p for p in extra if p] + [os.environ.get("PATH", "")])
         found = shutil.which(name, path=search)
         if not found:
-            raise Skip(f"{name} is not installed (pip install {name}, or set REPOLENS_TOOLS_BIN)")
+            how = _INSTALL_HINTS.get(name, f"pip install {name}")
+            raise Skip(f"{name} is not installed ({how}, or set REPOLENS_TOOLS_BIN)")
         return found
 
     def python_roots(self) -> list[str]:

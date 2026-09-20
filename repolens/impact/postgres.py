@@ -456,6 +456,30 @@ def _one_statement_the_parser_splits(sql: str) -> bool:
     return bool((_ROUTINE_START.match(sql) and re.search(r"\bBEGIN\s+ATOMIC\b", masked, re.I)) or _RULE_START.match(sql))
 
 
+_GENERATED_AS = re.compile(r"\bGENERATED\s+ALWAYS\s+AS\s*\(", re.I)
+
+
+def _parser_workaround(sql: str) -> str | None:
+    """`sql` with each `GENERATED ALWAYS AS (expr)` written `((expr))`, or None if it has none.
+
+    sqlglot (28 to at least 30.18) rejects a comparison as a generated column's whole
+    expression, `GENERATED ALWAYS AS (s >= 0.995) STORED`, which is valid PostgreSQL.
+    The extra parentheses mean the same thing and parse. Strings and comments are
+    masked first, so text inside them is never taken for a clause."""
+    masked = _mask(sql)
+    spans = []
+    for match in _GENERATED_AS.finditer(masked):
+        depth = 0
+        for index in range(match.end() - 1, len(masked)):
+            depth += {"(": 1, ")": -1}.get(masked[index], 0)
+            if depth == 0:
+                spans.append((match.end() - 1, index))
+                break
+    for start, end in reversed(spans):
+        sql = f"{sql[:start]}({sql[start:end + 1]}){sql[end + 1:]}"
+    return sql if spans else None
+
+
 def _recover(statement: str) -> list[tuple[str, str]] | None:
     """Table names from a statement the parser could not model, by fixed grammar only.
 
@@ -806,7 +830,12 @@ def add_sql(graph: Graph, source: str, sql: str, location: str, *, dynamic: bool
         if splits:
             raise sqlglot.errors.ParseError("read lexically: the parser would split this statement")
         with _quiet_parser():
-            expressions = sqlglot.parse(sql, read="postgres", error_level=sqlglot.errors.ErrorLevel.RAISE)
+            try:
+                expressions = sqlglot.parse(sql, read="postgres", error_level=sqlglot.errors.ErrorLevel.RAISE)
+            except Exception:  # noqa: BLE001 - same as below; retried once with a known parser gap worked around
+                if (rewritten := _parser_workaround(sql)) is None:
+                    raise
+                expressions = sqlglot.parse(rewritten, read="postgres", error_level=sqlglot.errors.ErrorLevel.RAISE)
     except Exception:  # noqa: BLE001 - not only SqlglotError: `GRANT;` raises ValueError, deep nesting RecursionError
         # One statement the parser cannot take is that statement's diagnostic, never the
         # whole file's FILE_SCAN_FAILED with every later statement lost.
