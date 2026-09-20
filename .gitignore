@@ -2,6 +2,8 @@
 __pycache__/
 *.py[cod]
 *.egg-info/
+# Python packaging output (`python -m build` writes dist/, setuptools writes build/).
+build/
 .venv/
 .repolens/analysis/
 .impact-tracer/

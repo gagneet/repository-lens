@@ -30,6 +30,10 @@ repository. `pyproject.toml` still says 0.3.0.
 
 ### Changed
 
+- `pyproject.toml` takes the package version from `repolens.__version__`
+  (`[tool.setuptools.dynamic]`) instead of repeating it. A release now bumps one line in
+  `repolens/__init__.py`, and a built wheel can no longer disagree with what `--version` and
+  the provenance stamp report.
 - `semgrep` joins the default tool list. Its adapter refuses a registry config, so it is
   offline by construction; unconfigured it reports itself skipped with the reason, which is
   more use than being silently absent. `osv-scanner` and `pip-audit` stay `--with`-only
