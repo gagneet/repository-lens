@@ -52,7 +52,7 @@ DEFAULTS: dict[str, Any] = {
     "out_dir": ".repolens/report",
     "baseline": ".repolens/report_baseline.json",
     "tools": ["security", "performance", "migrations", "featuretrace", "owners", "gates", "artefacts",
-              "docstrings", "commands", "sarif-commands", "ruff", "bandit",
+              "docstrings", "commands", "sarif-commands", "ruff", "bandit", "lessons",
               # semgrep is in the defaults although it is optional: its adapter REFUSES a
               # registry config, so it can only ever run against local rules, and until
               # `semgrep_config` is set it reports itself SKIPPED with the reason. A tool
@@ -103,6 +103,9 @@ class Context:
     cfg: Config
     section: dict[str, Any]
     _scan: Any = field(default=None, repr=False, compare=False)
+    #: The lessons pass, kept so `lessons.md` can be written from the same walk that
+    #: produced the findings instead of scanning the tree a second time.
+    lessons_survey: Any = field(default=None, repr=False, compare=False)
 
     def scan_settings(self) -> Any:
         """`[scan]` settings, made once per report: security, performance and migrations
@@ -389,6 +392,18 @@ def _impact(ctx: Context) -> list[Finding]:
     return out
 
 
+def _lessons(ctx: Context) -> list[Finding]:
+    """The lessons-learnt catalogue matched against this repository. Every finding is low
+    confidence by construction (see report/lessons.py), so this tool never fails --check."""
+    from . import lessons
+    # `scan_settings()` resolves [scan] over its own defaults, so .venv, node_modules and
+    # site-packages are excluded. Merging over an empty list instead read a repository that
+    # sets no skip_parts as "skip nothing" and reported the catalogue against its own
+    # installed dependencies.
+    ctx.lessons_survey = lessons.survey(ctx.root, ctx.scan_settings().skip_parts)
+    return ctx.lessons_survey.findings
+
+
 # ── external tools (optional; skipped with a reason when absent) ─────────────────
 def _json_output(proc: subprocess.CompletedProcess, tool: str, ok: tuple[int, ...] = (0, 1)) -> Any:
     """A tool's JSON stdout, or an exception. Scanners conventionally exit 0 for "clean"
@@ -543,6 +558,7 @@ ADAPTERS: dict[str, Callable[[Context], list[Finding]]] = {
     "featuretrace": _featuretrace,
     "owners": _owners, "gates": _gates, "artefacts": _artefacts, "docstrings": _docstrings,
     "impact": _impact,
+    "lessons": _lessons,
     "ruff": _ruff, "bandit": _bandit, "semgrep": _semgrep, "osv-scanner": _osv,
     "pip-audit": _pip_audit,
 }
@@ -774,6 +790,14 @@ def main(argv: list[str] | None = None, *, config: Config | None = None, prog: s
     (out_dir / "report.md").write_text(to_markdown(runs, meta), encoding="utf-8")
     (out_dir / "report.json").write_text(to_json(runs, meta), encoding="utf-8")
     (out_dir / "report.sarif").write_text(to_sarif(runs, __version__, build=build), encoding="utf-8")
+    written = ["report.md", "report.html", "report.json", "report.sarif"]
+    if ctx.lessons_survey is not None:
+        # The findings are only the lessons with a recipe this tool will run. The checklist
+        # names the rest, so "not in the report" is never read as "not a problem here".
+        from . import lessons as lessons_module
+        (out_dir / "lessons.md").write_text(
+            lessons_module.to_markdown(ctx.lessons_survey), encoding="utf-8")
+        written.append("lessons.md")
     # The report makes no whole-analysis completeness claim: each skipped or errored tool is
     # shown as such in its own run.
     (out_dir / "report.html").write_text(
@@ -785,7 +809,7 @@ def main(argv: list[str] | None = None, *, config: Config | None = None, prog: s
           + (f"  ({s['new']} new)" if baseline is not None else "  (no baseline)"))
     for f in [f for f in findings if f.priority in ("P0", "P1")][:12]:
         print(f"  {f.priority} {f.severity:<8} {f.rule:<48} {f.location}")
-    print(f"\nwrote {out_dir}/report.md, report.html, report.json, report.sarif")
+    print(f"\nwrote {out_dir}/" + ", ".join(written))
 
     if args.check:
         if baseline is None:
