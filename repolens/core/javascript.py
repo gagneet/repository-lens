@@ -1533,6 +1533,22 @@ def parse_source(text: str, suffix: str) -> JSFacts:
                                                   "controller", ""))
         elif kind in {"jsx_opening_element", "jsx_self_closing_element"}:
             element = value(node.child_by_field_name("name"))
+            # Native links and embedded resources use GET. The graph linker keeps
+            # only references to known handlers; page links are not API calls.
+            if element in {"a", "img", "iframe"}:
+                attribute_name = "href" if element == "a" else "src"
+                style = "anchor" if element == "a" else "resource"
+                for attribute in node.named_children:
+                    if attribute.type != "jsx_attribute" or not attribute.named_children:
+                        continue
+                    if value(attribute.named_children[0]) != attribute_name or len(attribute.named_children) < 2:
+                        continue
+                    target = attribute.named_children[1]
+                    if target.type == "jsx_expression":
+                        target = target.named_children[0] if target.named_children else None
+                    url = url_value(target)
+                    if url is not None:
+                        facts.requests.append(Request(owner, "GET", url[0], url[1], line, "", url[2], style))
             # Lower-case JSX names are host elements (<div>), not components.
             if element[:1].isupper() and re.fullmatch(r"[\w$]+(?:\.[\w$]+)*", element):
                 facts.calls.append((owner, element, line, "RENDERS"))

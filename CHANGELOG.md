@@ -30,6 +30,11 @@ repository. `pyproject.toml` still says 0.3.0.
 
 ### Changed
 
+- PostgreSQL `$n` bind parameters in adjacent value lists are retried as parser
+  placeholders when SQLGlot mistakes them for dollar quotes. The fallback preserves
+  escape strings, quoted identifiers, dollar-quoted bodies and nested comments.
+- Native relative JSX links and image/iframe sources are linked to scanned GET route
+  handlers. Page links and external browser URLs are not treated as missing API calls.
 - `pyproject.toml` takes the package version from `repolens.__version__`
   (`[tool.setuptools.dynamic]`) instead of repeating it. A release now bumps one line in
   `repolens/__init__.py`, and a built wheel can no longer disagree with what `--version` and

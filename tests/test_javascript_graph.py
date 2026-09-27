@@ -48,6 +48,35 @@ class Repo(unittest.TestCase):
 
 
 @unittest.skipUnless(HAS_STACK, "install repolens[stack]")
+class AnchorNavigationTests(Repo):
+    def test_native_links_to_get_handlers_are_callers_but_page_links_are_not_api_gaps(self):
+        self.write("app/reports/[id]/pdf/route.ts", "export async function GET() { return Response.json({}); }")
+        self.write("app/assets/[id]/route.ts", "export async function GET() { return Response.json({}); }")
+        self.write("app/preview/[id]/route.ts", "export async function GET() { return Response.json({}); }")
+        self.write("app/page.tsx", '''export default function Page({id}: {id: string}) {
+          return <><a href={`/reports/${id}/pdf`} download>PDF</a>
+            <img src={`/assets/${id}`} alt="cover" />
+            <iframe src={`/preview/${id}`} title="preview" />
+            <img src="/static.png" alt="static" />
+            <a href="/plain-page">Page</a><a href="https://example.org/report">External</a></>;
+        }''')
+        self.scan()
+        self.assertIn(("Page", "GET /reports/{dynamic}/pdf"), self.edges("CALLS_API"))
+        self.assertIn(("Page", "GET /assets/{dynamic}"), self.edges("CALLS_API"))
+        self.assertIn(("Page", "GET /preview/{dynamic}"), self.edges("CALLS_API"))
+        self.assertNotIn("API_HANDLER_WITHOUT_STATIC_CALLER", self.codes())
+        self.assertNotIn("API_CALL_WITHOUT_HANDLER", self.codes())
+        self.assertNotIn("EXTERNAL_API_REFERENCE", self.codes())
+
+    def test_unlinked_handler_remains_diagnostic(self):
+        self.write("app/reports/route.ts", "export async function GET() { return Response.json({}); }")
+        self.write("app/page.tsx", 'export default function Page(){ return <a href="/plain-page">Page</a>; }')
+        self.scan()
+        self.assertIn("API_HANDLER_WITHOUT_STATIC_CALLER", self.codes())
+        self.assertNotIn("API_CALL_WITHOUT_HANDLER", self.codes())
+
+
+@unittest.skipUnless(HAS_STACK, "install repolens[stack]")
 class ImportResolutionTests(Repo):
     def test_stylesheets_images_and_declaration_files_are_not_missing_modules(self):
         self.write("types/env.d.ts", "declare const X: string;")

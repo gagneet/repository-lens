@@ -480,6 +480,72 @@ def _parser_workaround(sql: str) -> str | None:
     return sql if spans else None
 
 
+_POSITIONAL_BIND = re.compile(r"\$[1-9]\d*\b")
+
+
+def _positional_bind_workaround(sql: str) -> str | None:
+    """Replace PostgreSQL `$n` binds in SQL code, leaving every quoted span intact.
+
+    SQLGlot 28 tokenizes adjacent `$1,$2` as a dollar-quoted string. Its `?` node is
+    still a parameter, including for the dynamic-identifier check. This lexer handles
+    PostgreSQL escape strings and nested comments, which `_mask` does not.
+    """
+    out: list[str] = []
+    i, length, changed = 0, len(sql), False
+    while i < length:
+        if sql.startswith("--", i):
+            end = sql.find("\n", i)
+            end = length if end < 0 else end
+            out.append(sql[i:end])
+            i = end
+            continue
+        if sql.startswith("/*", i):
+            depth, end = 1, i + 2
+            while end < length and depth:
+                if sql.startswith("/*", end):
+                    depth, end = depth + 1, end + 2
+                elif sql.startswith("*/", end):
+                    depth, end = depth - 1, end + 2
+                else:
+                    end += 1
+            out.append(sql[i:end])
+            i = end
+            continue
+        quote = sql[i]
+        if quote in "'\"":
+            escapes = quote == "'" and i > 0 and sql[i - 1] in "eE" and (i == 1 or not (sql[i - 2].isalnum() or sql[i - 2] in "_$"))
+            end = i + 1
+            while end < length:
+                if escapes and sql[end] == "\\":
+                    end += 2
+                    continue
+                if sql[end] == quote:
+                    if end + 1 < length and sql[end + 1] == quote:
+                        end += 2
+                        continue
+                    end += 1
+                    break
+                end += 1
+            out.append(sql[i:end])
+            i = end
+            continue
+        if quote == "$" and (tag := _DOLLAR_TAG.match(sql, i)) and (i == 0 or not (sql[i - 1].isalnum() or sql[i - 1] in "_$")):
+            close = sql.find(tag.group(0), tag.end())
+            if close >= 0:
+                end = close + len(tag.group(0))
+                out.append(sql[i:end])
+                i = end
+                continue
+        if quote == "$" and (i == 0 or not (sql[i - 1].isalnum() or sql[i - 1] in "_$")) and (bind := _POSITIONAL_BIND.match(sql, i)):
+            out.append("?")
+            i = bind.end()
+            changed = True
+            continue
+        out.append(quote)
+        i += 1
+    return "".join(out) if changed else None
+
+
 def _recover(statement: str) -> list[tuple[str, str]] | None:
     """Table names from a statement the parser could not model, by fixed grammar only.
 
@@ -833,7 +899,9 @@ def add_sql(graph: Graph, source: str, sql: str, location: str, *, dynamic: bool
             try:
                 expressions = sqlglot.parse(sql, read="postgres", error_level=sqlglot.errors.ErrorLevel.RAISE)
             except Exception:  # noqa: BLE001 - same as below; retried once with a known parser gap worked around
-                if (rewritten := _parser_workaround(sql)) is None:
+                rewritten = _parser_workaround(sql) or sql
+                rewritten = _positional_bind_workaround(rewritten) or rewritten
+                if rewritten == sql:
                     raise
                 expressions = sqlglot.parse(rewritten, read="postgres", error_level=sqlglot.errors.ErrorLevel.RAISE)
     except Exception:  # noqa: BLE001 - not only SqlglotError: `GRANT;` raises ValueError, deep nesting RecursionError

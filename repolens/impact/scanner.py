@@ -645,7 +645,12 @@ def _external_reference(state: ScanState, source: str, evidence: str, origin: st
 def _resolve_js_requests(state: ScanState) -> None:
     graph = state.graph
     untraced_base = _untraced_bases(state)
+    handled_get = [graph.nodes[edge.source] for edge in graph.edges
+                   if edge.kind in {"HANDLES_API", "IMPLEMENTED_BY"}
+                   and graph.nodes[edge.source].metadata.get("method") == "GET"]
     for rel, file_node, request in state.js_requests:
+        if request.style in {"anchor", "resource"} and (not request.url.startswith("/") or request.url.startswith("//")):
+            continue  # external browser navigation is not an API reference
         if request.style == _UNMODELLED_ROUTE:
             continue  # a server route registration, read by _detect_endpoint_gaps
         source = _symbol_id(rel, request.owner) if request.owner else file_node
@@ -707,6 +712,12 @@ def _resolve_js_requests(state: ScanState) -> None:
             details.append("the URL ends in a runtime value joined to its last segment; matched by route prefix")
         route = normalise_route(path)
         segments = _route_segments(route)
+        # A page link is not evidence of a missing API. Keep browser navigation
+        # only when a scanned GET handler can serve its route shape.
+        if request.style in {"anchor", "resource"} and not any(
+                _serves(segments, handler, open_tail=open_tail, loose=False)
+                for handler in handled_get):
+            continue
         if segments and all(segment == "{dynamic}" for segment in segments):
             # `${API_URL}${path}` or `/${path}`: nothing of the target is spelled, so no handler
             # can be matched and none can be called missing.

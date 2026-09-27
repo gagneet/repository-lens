@@ -11,6 +11,7 @@ from repolens.core.findings import Finding, ToolRun
 from repolens.impact.config import Config
 from repolens.impact.model import Graph, Node
 from repolens.impact.postgres import (
+    _positional_bind_workaround,
     add_sql,
     add_sql_file,
     looks_like_sql,
@@ -70,6 +71,20 @@ class LooksLikeSqlTests(unittest.TestCase):
         for text in ("COPY t (a, b) FROM '/data/t.csv' WITH (FORMAT csv)", "COPY (SELECT 1) TO STDOUT",
                      "COPY t FROM PROGRAM 'gunzip -c t.gz'", "TRUNCATE history", "Truncate history, sessions;"):
             self.assertEqual(looks_like_sql(text), text != "Truncate history, sessions;", text)
+
+
+class PositionalBindWorkaroundTests(unittest.TestCase):
+    def test_quoted_and_commented_binds_are_not_rewritten(self):
+        sql = ("SELECT E'it\\'s $1,$2', '$3,$4', \"col$5\", $tag$body $6,$7$tag$ "
+               "/* outer /* inner $8 */ still $9 */ FROM docs -- $10\n"
+               "WHERE id IN ($11,$12)")
+        expected = sql.replace("($11,$12)", "(?,?)")
+        self.assertEqual(_positional_bind_workaround(sql), expected)
+        self.assertIsNone(_positional_bind_workaround("SELECT '$1,$2' FROM docs"))
+
+    def test_identifier_suffix_is_not_a_bind(self):
+        self.assertEqual(_positional_bind_workaround("SELECT col$1 FROM docs WHERE id = $2"),
+                         "SELECT col$1 FROM docs WHERE id = ?")
 
 
 class SplitStatementsTests(unittest.TestCase):
@@ -237,6 +252,24 @@ class AddSqlTests(unittest.TestCase):
         add_sql(self.graph, "src", "SELECT * FROM WHERE", "ui.py:2", gated=True)
         self.assertEqual(self.codes(), [("SQL_NOT_PARSED", "info")])
         self.assertTrue(self.complete())
+
+    def test_adjacent_postgres_binds_are_parsed_without_touching_quoted_text(self):
+        add_sql(self.graph, "src",
+                "INSERT INTO app.docs (id, note) VALUES ($1,$2), ($3,$4) "
+                "ON CONFLICT (id) DO UPDATE SET note = excluded.note RETURNING id",
+                "app/docs.ts:1", gated=True)
+        self.assertEqual(self.tables(), {("app.docs", "app/docs.ts:1"): "writes"})
+        self.assertEqual(self.codes(), [])
+        add_sql(self.graph, "src", "SELECT '$1,$2' AS literal, id FROM app.docs WHERE id = $1",
+                "app/docs.ts:2", gated=True)
+        self.assertIn(("app.docs", "app/docs.ts:2"), self.tables())
+        self.assertEqual(self.codes(), [])
+
+    def test_adjacent_template_binds_still_reject_dynamic_identifiers(self):
+        add_sql(self.graph, "src", "SELECT $1 FROM $2 WHERE id IN ($3,$4)",
+                "app/query.ts:1", gated=True, parameterized=True)
+        self.assertIn(("DYNAMIC_SQL", "info"), self.codes())
+        self.assertNotIn(("$2", "app/query.ts:1"), self.tables())
 
     def test_a_broken_statement_in_a_sql_file_is_a_located_gap_and_keeps_its_neighbours(self):
         add_sql_file(self.graph, "src", "CREATE TABLE good_before (id int);\nCREATE TABLE (;\nCREATE TABLE good_after (id int);\n",
