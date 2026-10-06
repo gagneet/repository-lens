@@ -234,7 +234,7 @@ def _file_churn(s: LensSettings) -> dict[str, dict[str, Any]]:
 def _test_references(s: LensSettings) -> dict[str, list[str]]:
     """symbol -> test files naming it. Word-boundary matched to avoid substrings."""
     refs: dict[str, set[str]] = defaultdict(set)
-    for path in iter_files(s.root, [s.tests_dir], s.test_extensions, s.skip_parts):
+    for path in iter_files(s.root, [s.tests_dir], s.test_extensions, s.skip_parts, respect_gitignore=True):
         text = read_text_or_none(path)
         if text is None:
             continue
@@ -533,7 +533,7 @@ def build(s: LensSettings, with_churn: bool = False) -> dict[str, Any]:
         (s.python_roots, [".py"], partial(_extract_python, orm=orm)),
         (s.frontend_roots, s.frontend_extensions, _extract_frontend),
     ):
-        for path in iter_files(s.root, roots, suffixes, s.skip_parts):
+        for path in iter_files(s.root, roots, suffixes, s.skip_parts, respect_gitignore=True):
             tags, layer = _module_context(path)
             records.extend(extract(s, path, tags, layer))
 
@@ -672,9 +672,9 @@ def source_stamp(s: LensSettings) -> str:
     h = hashlib.sha256(json.dumps({f.name: _canonical(getattr(s, f.name)) for f in fields(s)},
                                   sort_keys=True).encode())
     inputs = {
-        *iter_files(s.root, s.python_roots, [".py"], s.skip_parts),
-        *iter_files(s.root, s.frontend_roots, s.frontend_extensions, s.skip_parts),
-        *iter_files(s.root, [s.tests_dir], s.test_extensions, s.skip_parts),
+        *iter_files(s.root, s.python_roots, [".py"], s.skip_parts, respect_gitignore=True),
+        *iter_files(s.root, s.frontend_roots, s.frontend_extensions, s.skip_parts, respect_gitignore=True),
+        *iter_files(s.root, [s.tests_dir], s.test_extensions, s.skip_parts, respect_gitignore=True),
         *(s.root / p for p in (s.owners_yaml, s.datastore_json) if p),
     }
     for path in sorted(inputs):

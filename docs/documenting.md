@@ -150,6 +150,7 @@ check it with `repolens owners --check`.
 
 Hand `features/<group>.context.json` and the drafted JSDoc to a person or an agent to write
 what the evidence cannot: purpose, business rules, authorization and the request and
-response shapes. `repolens docs coverage --check` ratchets the result, and
+response shapes. `repolens docs coverage --check` ratchets the result (in a git checkout it, like
+`repolens lens`, skips untracked files git ignores, such as a bundle a build copies in), and
 `repolens docs build` renders TypeDoc and pdoc pages from it. Regenerate step 2 after the
 code changes; the generated files carry the build that produced them.

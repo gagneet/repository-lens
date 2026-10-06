@@ -13,6 +13,8 @@ def iter_files(
     scan_dirs: Iterable[str],
     extensions: Iterable[str],
     skip_parts: Iterable[str],
+    *,
+    respect_gitignore: bool = False,
 ) -> list[Path]:
     """Every file under `scan_dirs` with a wanted suffix, sorted and de-duplicated.
 
@@ -20,6 +22,10 @@ def iter_files(
     substring test would skip `rebuild_ledger.py` for containing "build", and testing
     the absolute path would skip the entire repository whenever it is cloned under a
     directory that happens to be called `build`.
+
+    With `respect_gitignore`, untracked files git ignores are dropped (one git listing,
+    `core.git.untracked_ignored`); outside a git checkout, or when git cannot list them,
+    every file is kept.
     """
     wanted = frozenset(extensions)
     skip = SkipRule(skip_parts)
@@ -51,6 +57,10 @@ def iter_files(
             if not path.resolve().is_relative_to(root.resolve()):
                 continue
             found.add(path)
+    if respect_gitignore and found:
+        from .git import under_ignored, untracked_ignored
+        listed = untracked_ignored(root)[0]
+        found = {path for path in found if not under_ignored(path.relative_to(root).as_posix(), listed)}
     return sorted(found)
 
 

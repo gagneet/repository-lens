@@ -287,7 +287,7 @@ def measure(s: DocsSettings) -> list[FileResult]:
                                 (s.javascript_roots, s.javascript_extensions, javascript_file)):
         if not roots:
             continue
-        for path in iter_files(s.root, roots, exts, s.skip_parts):
+        for path in iter_files(s.root, roots, exts, s.skip_parts, respect_gitignore=True):
             rel_path = path.relative_to(s.root).as_posix()
             if s.skipped_file(rel_path):
                 continue

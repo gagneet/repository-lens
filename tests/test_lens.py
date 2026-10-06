@@ -283,3 +283,41 @@ class JavascriptParserSettingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(__import__("shutil").which("git"), "git is not installed")
+class GitignoreTests(unittest.TestCase):
+    """A file git ignores (a bundle a build copies in) is not the repository's code: indexing it
+    made `lens --check` fail on a tree whose tracked files had not changed."""
+
+    def tree(self, *, git: bool) -> Path:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name)
+        (root / "repolens.toml").write_text('[lens]\npython_roots = []\nfrontend_roots = ["web"]\n', encoding="utf-8")
+        (root / ".gitignore").write_text("web/public/swagger/\n", encoding="utf-8")
+        (root / "web" / "public" / "swagger").mkdir(parents=True)
+        (root / "web" / "a.ts").write_text("export function kept() {}\n", encoding="utf-8")
+        if git:
+            subprocess.run(_GIT + ["init", "-q"], cwd=root, check=True)
+            subprocess.run(_GIT + ["add", "-A"], cwd=root, check=True)
+            subprocess.run(_GIT + ["commit", "-q", "-m", "app"], cwd=root, check=True)
+        (root / "web" / "public" / "swagger" / "bundle.js").write_text("export function bundled() {}\n",
+                                                                        encoding="utf-8")
+        return root
+
+    def names(self, root: Path) -> set[str]:
+        from repolens.lens.build import build
+        return {r["name"] for r in build(from_config(load_config(root)))["functions"].values()}
+
+    def test_files_git_ignores_are_not_indexed_or_stamped(self):
+        from repolens.lens.build import source_stamp
+        root = self.tree(git=True)
+        self.assertEqual(self.names(root), {"kept"})
+        before = source_stamp(from_config(load_config(root)))
+        (root / "web" / "public" / "swagger" / "bundle.js").write_text("export function rebuilt() {}\n",
+                                                                        encoding="utf-8")
+        self.assertEqual(source_stamp(from_config(load_config(root))), before)
+
+    def test_outside_git_every_file_is_indexed(self):
+        self.assertEqual(self.names(self.tree(git=False)), {"kept", "bundled"})
