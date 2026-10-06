@@ -116,6 +116,36 @@ class ImportResolutionTests(Repo):
         self.assertNotIn(("main", "parse"), self.edges("CALLS"))
         self.assertNotIn(("main", "format"), self.edges("CALLS"))
 
+    def test_a_bare_name_in_a_module_never_joins_another_modules_function(self):
+        # ES modules share no scope: `fetch`/`resolve` here are a global and a parameter.
+        self.write("lib/a.ts", "export function fetch(){}\nexport function resolve(){}\nexport function helper(){}")
+        self.write("lib/b.ts", "export function resolve(){}")
+        self.write("use.ts", "export async function main(){ await fetch('/x'); new Promise((resolve) => resolve(1)); "
+                             "local(); }\nfunction local(){}")
+        self.write("legacy.js", "function boot(){ helper(); }")  # a classic script shares the global scope
+        self.scan()
+        calls = self.edges("CALLS")
+        self.assertNotIn(("main", "fetch"), calls)
+        self.assertNotIn(("main", "resolve"), calls)
+        self.assertIn(("main", "local"), calls)
+        # The module's own top-level declaration is what the bare name binds to.
+        self.assertEqual({e.resolution for e in self.graph.edges if e.kind == "CALLS"
+                          and self.graph.nodes[e.target].label == "local"}, {"high"})
+        self.assertIn(("boot", "helper"), calls)
+        self.assertNotIn("AMBIGUOUS_CALL", self.codes())
+
+    def test_a_use_server_prologue_marks_the_file_and_never_backtracks(self):
+        from repolens.impact.scanner import _USE_SERVER
+        for text in ('"use server";\n', "// actions\n/* x */\n'use strict';\n'use server'\n", '\ufeff"use server"'):
+            self.assertTrue(_USE_SERVER.match(text), text)
+        started = time.perf_counter()
+        for text in ('const a = "use server";', "\n// " * 5000 + "x", "/* a */ " * 5000, " " * 50000 + "x"):
+            self.assertIsNone(_USE_SERVER.match(text))
+        self.assertLess(time.perf_counter() - started, 1.0)
+        self.write("app/actions.ts", '"use server";\nexport async function save() {}\n')
+        self.scan()
+        self.assertEqual(self.node("app/actions.ts", "file").metadata.get("directive"), "use server")
+
     def test_a_barrel_export_star_and_a_renamed_reexport_resolve(self):
         self.write("lib/a.ts", "export const arrow = () => 1;\nexport function inner(){}")
         self.write("lib/index.ts", 'export * from "./a";\nexport { inner as renamed } from "./a";')

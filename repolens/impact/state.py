@@ -19,7 +19,8 @@ class PendingCall:
     name: str
     evidence: str
     language: str
-    #: CALLS for a call or `new`; RENDERS for a JSX element naming a component.
+    #: CALLS for a call or `new`; RENDERS for a JSX element naming a component; PASSES for a
+    #: function handed to a JSX attribute by reference, linked (as CALLS) only through an import.
     relationship: str = "CALLS"
 
 

@@ -463,6 +463,51 @@ repository. `pyproject.toml` still says 0.3.0.
 
 ### Fixed
 
+- Function Lens looked for an `@functionlens:` id only within 12 lines above a declaration, so an id
+  written above a longer JSDoc block (where it must go: a line comment between the JSDoc and the
+  function hides the JSDoc from ESLint's jsdoc rules) did not attach. A `/** */` block is now skipped
+  whole, however long; other comments and decorators keep the 12-line window, and a blank line or
+  code still stops the search. `featuretrace propose --function-lens` uses the same rule
+  (`lens.build.attached_source_id`), so it no longer drafts a second id there. On a Next.js
+  monorepo: 77 → 86 of 86 ids attach.
+- Function Lens reported "no docstring" for every JS/TS function. The JSDoc block directly above a
+  declaration (`function`, `export const f = (…) =>`, and with an `@functionlens:` line above it) is
+  now its purpose: the first paragraph, joined onto one line, up to the first `@` tag. Both
+  `javascript_parser` settings read it; `[lens] placeholder_prefixes` applies.
+
+- `featuretrace propose` drafted empty page markers for Next.js applications that reach their data
+  without an HTTP route. A page now flows through the `"use server"` actions it calls or hands to a
+  JSX attribute (`<form action={save}>`), the server-module functions a server component calls, and
+  its own queries, to the stores they reach (`page /x → action save, server load → t (draft)`); those
+  files are `Related:`, and an action module's flow starts at its pages. Evidence stays import-bound:
+  a JSX attribute value links only through an import (new `PASSES` call kind, recorded as `CALLS`), and
+  a bare name in an ES module binds to that module's own top-level declaration (`high`,
+  `origin="module_scope"`) instead of a `probable` name match. A `"use server"` prologue is recorded
+  as file metadata `directive`. On a 101-file Next.js app: empty page flows 41 → 3, `Related: none` 51 → 7.
+- A bare call in a JS/TS module (`fetch(…)`, `setTimeout(…)`, a `resolve` parameter) was name-matched
+  to same-named functions in other modules, as `probable` or `AMBIGUOUS_CALL` edges. ES modules share
+  no scope, so a bare name that is neither imported nor defined in the file is now left unlinked
+  (a classic script without imports or exports still name-matches). On a 600-file Next.js monorepo:
+  1302 → 1216 `AMBIGUOUS_CALL`.
+- `INSERT INTO t AS s (cols) …` (an aliased insert, common with `ON CONFLICT … WHERE s.x`) failed the
+  SQL shape gate and was `SQL_NOT_PARSED`; it is now read.
+- `repolens docs coverage` measured no TypeScript or JavaScript unless `[docs] javascript_roots` was
+  set, so a TS repository without a `repolens.toml` reported only its few Python files. JS/TS is now
+  measured from the root like Python (build output, `node_modules`, tests, `.d.ts` and `.min.js` stay
+  out). The methods of a counted class now count (kind `method`; not the constructor, `set`
+  accessors, overload signatures or `private`/`#name` members), and `include_private = true` also
+  counts file-local functions, classes and function-valued consts.
+- Valid PostgreSQL was `SQL_PARSE_ERROR`, which made the analysis incomplete:
+  `CREATE TEMP TABLE … ON COMMIT DROP` (SQLGlot keeps it as a Command) and string literals that
+  PostgreSQL joins across a newline (`COMMENT ON … IS 'a'` then `'b'` on the next line). Both are
+  rewritten for the parser and read as the tables and comment they are.
+- `SQL_UNSUPPORTED_STATEMENT` no longer lists DDL the lexical reader records in full: `ALTER TABLE`
+  (RLS, triggers, columns), policies, triggers, `GRANT`/`REVOKE`, default privileges, `COMMENT ON`,
+  routines, roles, schemas, extensions, types, domains, sequences, and DO blocks that do not
+  `EXECUTE` a string. A policy's `USING`/`WITH CHECK` expressions now record the tables they read
+  (`reads in policy`), and a `$$` routine body the parser kept as text (`SET search_path = …` before
+  `AS`) is read like any other. Rules, event triggers, maintenance commands and dynamic DO blocks are
+  still listed. On a 69-migration schema: 4 parse errors → 0, 551 infos → 35.
 - `gates` reported every shell and SQL validation script as `gates/cannot-fail`: only a Python
   `return 1` or a gate flag counted. It now also recognises shell `exit 1`/`exit "$rc"` and errexit
   (`set -e`, `set -euo pipefail`), SQL `RAISE EXCEPTION`/`ASSERT`, and `sys.exit(1)`/`raise SystemExit(…)`,
@@ -495,12 +540,22 @@ repository. `pyproject.toml` still says 0.3.0.
 
 ### Upgrade notes
 
+- Regenerate the Function Lens digest after upgrading: JS/TS records gain a `purpose` from their
+  JSDoc, and ids above long JSDoc blocks now attach, so `lens --check` reports the old digest stale.
 - Regenerate the Function Lens digest after upgrading. Function records now include `source_id`
   and duplicate-id state, and TypeScript functions now contribute to the frontend count.
 - `analysis.json` endpoint and page nodes gain `path` and `parameters`, and the graph gains `DEFINES`
   edges and SQL foreign-key `REFERENCES` edges. Consumers that enumerate edge kinds should accept them.
 - `TODO\(repolens\)` is always a `[docs] placeholder_patterns` entry, whatever the repository lists
   (including the `[]` that `repolens init` writes), so drafted JSDoc stays undocumented until edited.
+- **`docs coverage` baselines** grow by the JS/TS files and class methods now measured. Run
+  `repolens docs coverage --update-baseline` once after upgrading, or set `[docs] javascript_roots = []`
+  (and a `javascript_kinds` without `"method"`) to keep the old count.
+- **Scanner revision 11**: PostgreSQL policies gain `reads in policy` table edges and `$$` routine
+  bodies kept as text gain their tables; expect far fewer `SQL_UNSUPPORTED_STATEMENT` infos, bare JS/TS
+  calls in ES modules lose their cross-module name-only `CALLS` edges, same-module calls become
+  `high` (`module_scope`), and functions handed to JSX attributes through an import gain `CALLS`
+  edges. Page feature groups now include the stores a page's confident calls reach.
 - **Scanner revision 10** (9 for the field-evaluation fixes, 10 for route parameter names, `DEFINES`
   and SQL foreign keys): cached impact indexes are rebuilt. Revision 10 adds `DEFINES` and
   `REFERENCES` edges. From revision 9, expect fewer `CALLS_API` links and stores:

@@ -628,5 +628,72 @@ class FileEvidenceTests(unittest.TestCase):
                          ["app/services/accounts.py", "app/services/items.py", "app/services/orders.py"])
 
 
+SERVER_ACTIONS = {
+    "package.json": '{"name": "sa", "private": true, "dependencies": {"next": "15.0.0", "react": "19.0.0", "pg": "8.13.0"}}\n',
+    "lib/db.ts": 'import { Pool } from "pg";\nexport const pool = new Pool();\n',
+    "app/actions/orders.ts": ('// Server actions for orders.\n"use server";\nimport { pool } from "../../lib/db";\n\n'
+                              'export async function saveOrder(form: FormData) {\n'
+                              '  await pool.query("insert into orders (note) values ($1)", [form.get("note")]);\n}\n'),
+    # The query runs in a same-module helper, which the exported function calls by bare name.
+    "server/orders.ts": ('import { pool } from "../lib/db";\n\nexport async function listOrders() {\n'
+                         '  return load();\n}\n\nasync function load() {\n'
+                         '  const { rows } = await pool.query("select id, note from order_lines");\n  return rows;\n}\n'),
+    # Never imported by the page: `onDone={purge}` there is a name, not evidence.
+    "lib/cleanup.ts": 'import { pool } from "./db";\nexport async function purge() {\n  await pool.query("delete from audit_log");\n}\n',
+    "app/orders/history/page.tsx": ('import { pool } from "../../../lib/db";\n\nexport default async function History() {\n'
+                                    '  const { rows } = await pool.query("select id from order_history");\n'
+                                    '  return <ul>{rows.length}</ul>;\n}\n'),
+    "app/orders/page.tsx": ('import { saveOrder } from "../actions/orders";\nimport { listOrders } from "../../server/orders";\n\n'
+                            'export default async function OrdersPage() {\n  const rows = await listOrders();\n'
+                            '  return (\n    <form action={saveOrder}>\n      <List items={rows} onDone={purge} />\n    </form>\n  );\n}\n'),
+}
+
+
+@unittest.skipUnless(STACK, "install repolens[stack]")
+class ServerActionTests(FileEvidenceTests):
+    """Next.js pages that reach their data with no HTTP route: a `"use server"` action handed to
+    `<form action>` and a server module a server component imports and calls."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.root = Path(cls.tmp.name)
+        for path, text in SERVER_ACTIONS.items():
+            target = cls.root / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(text, encoding="utf-8")
+        with contextlib.redirect_stdout(io.StringIO()):
+            propose.main([], config=load_config(cls.root))
+        payload = json.loads((cls.root / OUT / "proposal.json").read_text(encoding="utf-8"))
+        cls.files = {item["path"]: item for item in payload["files"]}
+
+    def marker(self, path: str) -> list[str]:
+        return [line.removeprefix("//").lstrip() if line.startswith("// ") else line.removeprefix("//")
+                for line in self.files[path]["marker"]["lines"]]
+
+    def test_a_page_flows_through_its_actions_and_server_functions_to_their_tables(self):
+        self.assertEqual(self.field("app/orders/page.tsx", "Data flow")[0],
+                         "page /orders → action saveOrder, server listOrders → order_lines, orders (draft).")
+
+    def test_a_server_component_names_its_own_queries(self):
+        self.assertEqual(self.field("app/orders/history/page.tsx", "Data flow")[0],
+                         "page /orders/history → queries in this file → order_history (draft).")
+
+    def test_related_lists_the_action_and_server_module_but_not_a_name_only_match(self):
+        self.assertEqual(sorted(self.field("app/orders/page.tsx", "Related")), ["app/actions/orders.ts", "server/orders.ts"])
+
+    def test_an_action_module_names_the_page_that_uses_it(self):
+        self.assertTrue(self.field("app/actions/orders.ts", "Data flow")[0].startswith("page /orders → saveOrder → orders"))
+        self.assertIn("app/orders/page.tsx", self.field("app/actions/orders.ts", "Related"))
+
+    # The inherited Python-fixture tests do not apply to this fixture.
+    test_a_service_names_only_the_stores_its_own_code_references = None
+    test_a_model_names_exactly_the_tables_it_declares = None
+    test_a_file_reached_only_by_a_name_only_call_is_not_related = None
+    test_a_shared_model_takes_the_group_with_the_most_evidence = None
+    test_a_route_nobody_calls_says_so = None
+    test_related_lists_direct_links_only = None
+
+
 if __name__ == "__main__":
     unittest.main()

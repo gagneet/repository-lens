@@ -14,7 +14,11 @@ What counts as PUBLIC:
               implementation detail. Parsed with `ast`.
   TypeScript  every top-level EXPORTED declaration — `export function|class|const|
   JavaScript  interface|type|enum`, and a local declaration exported by name
-              (`export default Page`, `export { a, b }`, `export default withAuth(Page)`).
+              (`export default Page`, `export { a, b }`, `export default withAuth(Page)`),
+              and the methods of each counted class (not `private`/`#name` members, the
+              constructor or `set` accessors). A file-local function, class or
+              function-valued `const` is the TypeScript `_private`: it counts only with
+              `include_private = true`, as do private methods.
               Documented means a `/** ... */` block before it, with only blank lines,
               `//` comments or decorators between. This half is a REGEX over lines, not a
               parser: a declaration that does not start at column 0 is not seen, and a
@@ -199,8 +203,54 @@ def _jsdoc_before(lines: list[str], index: int) -> str | None:
     return block[start + 3:].rsplit("*/", 1)[0]
 
 
+# A class member that is a method: `name(`, `async *name<T>(`, `get name(`, or an arrow
+# property `name = async (…) =>`. Read only at the class body's own indentation.
+_JS_MEMBER = re.compile(
+    rf"^(?P<indent>[ \t]+)(?P<mods>(?:(?:public|private|protected|static|async|override|readonly|abstract|declare|"
+    rf"accessor|get|set)\s+)*)(?:\*\s*)?(?P<name>#?{_IDENT})\s*(?:\?\s*)?(?:<[^>]*>\s*)?"
+    rf"(?:\(|=\s*(?:async\s+)?(?:\(|{_IDENT}\s*=>|function\b)(?=.*=>|.*function\b|[^)]*$))")
+_NOT_MEMBERS = frozenset({"constructor", "if", "for", "while", "switch", "return", "catch", "super", "with", "do"})
+# A non-exported `const f = …` counts only when it holds a function (under `include_private`).
+_FUNCTION_VALUE = re.compile(rf"=\s*(?:async\s+)?(?:function\b|{_IDENT}\s*=>|\(.*=>|\([^)]*$|<)")
+
+
+def _class_methods(rel_path: str, lines: list[str], start: int, owner: str, s: DocsSettings) -> list[Symbol]:
+    """Methods of the class declared on `lines[start]`, up to its column-0 `}`.
+
+    Public members only (not `private`, not `#name`) unless `include_private`; never the
+    constructor (the class's own JSDoc describes construction, as a Python class docstring
+    does) or a `set` accessor (the getter documents the property). An overload or abstract
+    signature without a body (`f(a: string): void;`) is documented on the implementation."""
+    if lines[start].rstrip().endswith("}"):
+        return []  # `class A {}` on one line
+    found: list[Symbol] = []
+    indent: str | None = None
+    for index in range(start + 1, len(lines)):
+        line = lines[index]
+        if line.startswith("}"):
+            break
+        if not line.strip() or line.lstrip().startswith(("//", "/*", "*", "@")):
+            continue
+        current = line[:len(line) - len(line.lstrip())]
+        indent = current if indent is None else indent
+        if current != indent or not (match := _JS_MEMBER.match(line)):
+            continue
+        name, mods = match.group("name"), match.group("mods").split()
+        if name in _NOT_MEMBERS or "set" in mods or (re.search(r"\)\s*(?::[^{=]*)?;\s*$", line) and "{" not in line):
+            continue
+        if (name.startswith("#") or "private" in mods) and not s.include_private:
+            continue
+        found.append(Symbol(rel_path, index + 1, "method", f"{owner}.{name}",
+                            _real_doc(_jsdoc_before(lines, index), s)))
+    return found
+
+
 def javascript_file(rel_path: str, text: str, s: DocsSettings) -> FileResult:
-    """Exported declarations of one TypeScript/JavaScript file. A line regex, not a parser."""
+    """Top-level declarations and class methods of one TypeScript/JavaScript file.
+
+    Exported declarations count; a non-exported function, class or function-valued
+    `const` counts only under `include_private` (a file-local helper is the TypeScript
+    `_private`). Methods count inside every counted class. A line regex, not a parser."""
     result = FileResult(rel_path, "javascript")
     lines = text.splitlines()
     by_name = _exported_by_name(text)
@@ -214,13 +264,18 @@ def javascript_file(rel_path: str, text: str, s: DocsSettings) -> FileResult:
             continue
         exported = bool(match.group("export"))
         if not exported and name not in by_name:
-            continue
+            local = s.include_private and name and (
+                kind in ("function", "class") or (kind == "const" and _FUNCTION_VALUE.search(line)))
+            if not local:
+                continue
         if not name:
             if "default" not in (match.group("export") or ""):
                 continue
             name = "default"
         doc = _jsdoc_before(lines, index)
         result.symbols.append(Symbol(rel_path, index + 1, kind, name, _real_doc(doc, s)))
+        if kind == "class" and "method" in s.javascript_kinds:
+            result.symbols.extend(_class_methods(rel_path, lines, index, name, s))
     return result
 
 

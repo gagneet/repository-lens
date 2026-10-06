@@ -29,7 +29,7 @@ from .render import mark_unverified_stores, unverified_stores
 from ..core import javascript
 from ..core.files import is_test_path
 
-SCANNER_REVISION = 10
+SCANNER_REVISION = 11
 
 
 FEATURE_RE = re.compile(r"@featuretrace:([A-Za-z0-9_.-]+)")
@@ -269,6 +269,9 @@ def _scan_javascript_syntax(state: ScanState, path: Path, text: str, file_node: 
         graph.add_edge(Edge(parent, _symbol_id(rel, symbol.qualified), "DEFINES", "exact", f"{rel}:{symbol.line}",
                             origin="tree-sitter", detail=detail))
     state.js_exports[rel] = dict(facts.exports)
+    if _USE_SERVER.match(text):
+        # A Next.js server-actions module: its exports run on the server when a client calls them.
+        graph.nodes[file_node].metadata["directive"] = "use server"
     edges_before = len(graph.edges)
     _add_next_routes(state, rel, path, facts, file_node, language)
     _add_route_registrations(state, rel, facts, file_node, language, routed=len(graph.edges) > edges_before)
@@ -1874,6 +1877,16 @@ def _load_routers(state: ScanState, payload: dict, configured: str, pattern_only
             ))
 
 
+#: A `"use server"` directive prologue: only comments and other directives may precede it.
+_USE_SERVER = re.compile(r"""^\ufeff?(?:\s++|//[^\n]*+|/\*(?:[^*]|\*(?!/))*+\*/|"use strict";?|'use strict';?)*+["']use server["']""")
+_MODULE_SUFFIXES = (".ts", ".tsx", ".mts", ".cts", ".mjs")
+
+
+def _es_module(state: ScanState, path: str) -> bool:
+    """Is `path` a JS/TS module (own scope), not a classic script sharing the global one?"""
+    return path.endswith(_MODULE_SUFFIXES) or bool(state.imports.get(path) or state.js_exports.get(path))
+
+
 def _resolve_calls(state: ScanState) -> None:
     graph = state.graph
     labels: dict[str, dict[str, list[str]]] = defaultdict(lambda: defaultdict(list))
@@ -1945,6 +1958,13 @@ def _resolve_calls(state: ScanState) -> None:
             if targets:
                 # Import-bound syntax, not type or runtime resolution.
                 resolution, origin, detail = "high", "import_binding", "Import-bound syntax; runtime dispatch unverified"
+        kind = relationship
+        if relationship == "PASSES":
+            # A JSX attribute value is often data (`items={rows}`): only an import-bound
+            # function counts, never a name-only match.
+            if not targets:
+                continue
+            kind, detail = "CALLS", "Import-bound function passed to a JSX attribute; runs when the element fires it"
         if not targets and len(parts) == 2 and parts[0] in {"self", "cls", "this"} and source_node.kind == "symbol":
             scope = source_node.label.split(".")[:-1]
             while scope and not targets:
@@ -1965,6 +1985,17 @@ def _resolve_calls(state: ScanState) -> None:
             local = [target for target in targets if graph.nodes[target].path == source_node.path]
             if local and len(parts) == 1:
                 targets = local
+                if language != "python" and len(local) == 1 and "." not in graph.nodes[local[0]].label \
+                        and _es_module(state, source_node.path or ""):
+                    # A module's own top-level declaration is what a bare name in it binds to
+                    # (ES module scope); only a local variable shadowing it would differ.
+                    resolution, origin = "high", "module_scope"
+                    detail = "Top-level declaration of the same module; a shadowing local binding is not checked"
+            elif len(parts) == 1 and language != "python" and _es_module(state, source_node.path or ""):
+                # An ES module has no scope shared with other files: a bare name neither
+                # imported nor defined here is a global (`fetch`, `setTimeout`) or a
+                # parameter (`resolve`), never another module's function.
+                continue
         targets = [target for target in targets if target != source]
         if not targets or len(targets) > state.config.max_ambiguous_targets:
             continue
@@ -1973,7 +2004,7 @@ def _resolve_calls(state: ScanState) -> None:
         resolution = resolution if len(targets) == 1 else "ambiguous"
         evidence = calls[0].evidence
         for target in targets:
-            graph.add_edge(Edge(source, target, relationship, resolution, evidence, origin=origin, detail=detail))
+            graph.add_edge(Edge(source, target, kind, resolution, evidence, origin=origin, detail=detail))
         if len(targets) > 1:
             graph.issues.append(Issue(
                 "AMBIGUOUS_CALL", "info",

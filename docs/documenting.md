@@ -77,6 +77,13 @@ What a draft may say:
   name-only call is left out rather than guessed.
 - **Pages and routes:** linked by the scanner's route matches, except ambiguous ones and calls from
   test code; `proposal.json` records each link's resolution.
+- **Pages with no HTTP route (Next.js):** a page that import-binds a function in another file and
+  calls it, or hands it to a JSX attribute (`<form action={save}>`), flows through it to the
+  stores it reaches: `action save` for an export of a `"use server"` module, `server load` for any
+  other server function, and `queries in this file` for a server component's own SQL. Those files
+  are `Related:`, and an action or server module's flow starts at the pages that call it. Only
+  import-bound links count; a bare name inside one module binds to that module's top-level
+  declaration (a shadowing local is not checked), and no name is matched across files.
 - **`Related:`:** at most 8 files with a direct link, the group's own files first and `scripts/`,
   `migrations/`, `tools/`, `vendor/` last; `Related: none found (draft)` when there is none.
 - **A file in several groups** takes the group with the most evidence. A route nobody calls says
@@ -96,7 +103,9 @@ keeps counting the symbol as undocumented until a person writes the purpose.
 With `--function-lens` it drafts a one-line `@functionlens:` id on public route handlers,
 functions that call an API or touch a store, and exported frontend entry functions. The id is
 created from the original path and symbol, then read from the comment thereafter; keep the comment
-with the declaration and Function Lens can find it after a rename or move. Duplicate ids are
+with the declaration and Function Lens can find it after a rename or move. It attaches when it
+sits directly above the declaration, among its comments and decorators (up to 12 lines), or directly
+above the declaration's `/** */` block, however long; a blank line or code ends the search. Duplicate ids are
 reported in the index. The comment stores identity only, not inferred callers or data flow, so
 changing code does not leave derived claims behind. It is a comment and has no runtime behavior.
 

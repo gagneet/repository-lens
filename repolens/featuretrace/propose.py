@@ -48,6 +48,7 @@ from ..core.files import is_test_path
 from ..docs.coverage import _jsdoc_before
 from ..impact.features import (CONFIDENT, HANDLER_EDGES, LAYERS, STORE_EDGES, FeatureGroup, edge_index,
                                endpoint_status, feature_groups, reach, route_path)
+from ..lens.build import attached_source_id
 from .audit import MARKABLE_SUFFIXES, REF_PATH_RE, STORE_TOKEN_RE, AuditContext, markers_for
 from .model import iter_files as featuretrace_files
 from .settings import FTSettings, from_config
@@ -257,6 +258,34 @@ class _Evidence:
             self._reached[path] = found
         return self._reached[path]
 
+    def server_calls(self, path: str) -> list[tuple[object, list[tuple[object, str, object]]]]:
+        """(edge, stores) for each import-bound call or JSX hand-over from `path` to a function in
+        another file whose confident reach touches a store: a Next.js server action or a server
+        module a server component imports. Name-only matches never count."""
+        found = []
+        for edge in self.edges_from(path, "CALLS"):
+            where = self.path(edge.target)
+            if edge.origin != "import_binding" or edge.resolution not in CONFIDENT or not where \
+                    or where == path or is_test_path(where):
+                continue
+            if stores := self.store_edges(reach(self.outgoing, edge.target, self.depth)):
+                found.append((edge, stores))
+        return found
+
+    def server_callers(self, path: str) -> set[str]:
+        """Files outside test code that import-bind and call (or hand over) a function in `path`."""
+        return {where for node in self.in_file.get(path, ()) for e in self.incoming.get(node, ())
+                if e.kind == "CALLS" and e.origin == "import_binding" and e.resolution in CONFIDENT
+                and (where := self.path(e.source)) and where != path and not is_test_path(where)}
+
+    def server_step(self, edge) -> str:
+        """`action save` for a `"use server"` export, `server load` for any other server function."""
+        node = self.graph.nodes[edge.target]
+        directive = next((self.graph.nodes[n].metadata.get("directive") for n in self.in_file.get(node.path or "", ())
+                          if self.graph.nodes[n].kind == "file"), None)
+        name = node.metadata.get("qualified_name") or node.label
+        return f"{'action' if directive == 'use server' else 'server'} {name}"
+
     @cached_property
     def reaching_endpoints(self) -> dict[str, set[str]]:
         """Path -> served endpoints whose handlers confidently reach a node in that path (the handler's file excluded)."""
@@ -349,9 +378,11 @@ def _related(ev: _Evidence, path: str, layer: str) -> Counter:
     elif layer == "frontend":
         for edge in ev.api_calls(path):
             found.update(ev.handler_files(edge.target))
+        found.update(ev.path(edge.target) for edge, _ in ev.server_calls(path))
     elif layer == "service":
         for endpoint in ev.reaching_endpoints.get(path, ()):
             found.update(ev.handler_files(endpoint))
+        found.update(ev.server_callers(path))
         found.update(ev.referencing({s.id for s, _, _ in ev.stores(path)}, declaring=True))
     else:
         found.update(ev.referencing({s.id for s, _, _ in ev.file_stores(path, layer)}, declaring=False))
@@ -405,19 +436,34 @@ def _role_and_flow(ev: _Evidence, path: str, layer: str, stores, group: str) -> 
             role = f"API client for {_listed(called)}"
         else:
             role = f"code the {group} routes reach"
-        return role, [f"API {_listed(routes)}" if routes else "no route found", _listed(functions) or name,
-                      _listed(sink) or _listed(called) or "no store found"]
+        if routes:
+            source = f"API {_listed(routes)}"
+        else:
+            # A server action or server module: the pages (or other files) that import and call it.
+            callers = ev.server_callers(path)
+            pages = sorted({page for where in callers for page in ev.pages(where)})
+            source = (f"page {_listed(pages)}" if pages else _listed(sorted(callers))) or "no route found"
+        return role, [source, _listed(functions) or name, _listed(sink) or _listed(called) or "no store found"]
     pages = ev.pages(path)
     calls = ev.api_calls(path)
-    called = sorted({ev.endpoint_label(edge.target) for edge in calls})
-    reached = _store_names(store for edge in calls for store, _, _ in ev.endpoint_stores(edge.target))
+    server = ev.server_calls(path)
+    api = sorted({ev.endpoint_label(edge.target) for edge in calls})
+    actions = sorted({ev.server_step(edge) for edge, _ in server})
+    called = api + actions
+    own = ev.stores(path)  # a server component's own queries (`withUser(db, (tx) => tx.many(…))`)
+    reached = _store_names([store for edge in calls for store, _, _ in ev.endpoint_stores(edge.target)]
+                           + [store for _, stores in server for store, _, _ in stores] + [store for store, _, _ in own])
+    if own:
+        called = [*called, "queries in this file"]
     if pages:
         role = f"page {_listed(pages)}"
-    elif called:
-        role = f"API client for {_listed(called)}"
+    elif api:
+        role = f"API client for {_listed(api)}"
+    elif actions:
+        role = f"UI calling {_listed(actions)}"
     else:
         role = f"UI for {group}"
-    steps = [f"page {_listed(pages)}" if pages else "browser", _listed(called) or "no served API call found"]
+    steps = [f"page {_listed(pages)}" if pages else "browser", _listed(called) or "no served API call or server function found"]
     if reached:
         steps.append(_listed(reached))
     return role, steps
@@ -515,21 +561,12 @@ def _function_lens_id(path: str, qualified: str) -> str:
 
 
 def _has_function_lens_id(lines: list[str], index: int) -> bool:
-    """Whether the declaration at `index` already has a nearby Function Lens id.
+    """Whether the declaration at `index` already has an attached Function Lens id.
 
-    Walk only its attached decorators and comments. A blank line or code ends the attachment, so an
-    id belonging to the previous declaration is never reused.
+    Function Lens's own rule (`attached_source_id`), so a draft never adds a second id to a
+    declaration the index already reads one from, nor reuses the previous declaration's.
     """
-    for line in reversed(lines[max(0, index - 12):index]):
-        text = line.strip()
-        if FUNCTION_LENS_RE.match(text):
-            return True
-        if not text:
-            break
-        if text.startswith(("//", "#", "/*", "*", "*/", "@")):
-            continue
-        break
-    return False
+    return attached_source_id(lines, index) is not None
 
 
 def _function_lens_blocks(ev: _Evidence, path: str, lines: list[str], *, python: bool,
