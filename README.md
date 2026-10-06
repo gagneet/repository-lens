@@ -161,7 +161,7 @@ pg_schemas = ["public", "inventory"]
 client_api_base = "/api"      # base path for an HTTP client the scanner cannot trace to its declaration
 client_receivers = ["http"]   # receiver names that are such clients
 api_origins = ["PAYMENTS_API_URL"]  # origin names that are this API although their words say otherwise
-respect_gitignore = true      # graph and Python checks skip untracked files git ignores; tracked files are always read
+respect_gitignore = true      # graph and Python checks skip untracked files git ignores; tracked files are always read (lens and docs coverage always skip them)
 roles = ["admin", "operator"]
 
 [scan]

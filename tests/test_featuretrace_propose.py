@@ -232,6 +232,26 @@ class ProposeTests(unittest.TestCase):
         [renamed] = lookup(data, annotated["listOrders"])
         self.assertEqual((renamed["name"], renamed["source_id"]), ("loadOrders", annotated["listOrders"]))
 
+    def test_a_function_lens_id_goes_above_a_declaration_whose_arrow_starts_below_it(self):
+        # The graph places the function on the arrow's line; the id belongs above the JSDoc
+        # over `export const`, and an id already there is seen.
+        orders = self.text("lib/orders.ts")
+        self.write("lib/orders.ts", orders + '\n/** Counts the orders. */\nexport const countOrders =\n'
+                                             '  async () => (await pool.query("SELECT count(*) FROM orders")).rows;\n')
+        code, output = self.draft("--function-lens")
+        self.assertEqual(code, 0, output)
+        drafted = next(f for f in self.proposal()["files"] if f["path"] == "lib/orders.ts")["function_lens"]
+        [item] = [item for item in drafted if item["symbol"] == "countOrders"]
+        self.assertIn(f"+// @functionlens:{item['id']}\n /** Counts the orders. */\n export const countOrders =", self.patch())
+
+        self.write("lib/orders.ts", orders + f"\n// @functionlens:{item['id']}\n/** Counts the orders. */\n"
+                                             'export const countOrders =\n'
+                                             '  async () => (await pool.query("SELECT count(*) FROM orders")).rows;\n')
+        code, output = self.draft("--function-lens")
+        self.assertEqual(code, 0, output)
+        drafted = next(f for f in self.proposal()["files"] if f["path"] == "lib/orders.ts")["function_lens"]
+        self.assertNotIn("countOrders", {item["symbol"] for item in drafted})
+
     def test_a_tampered_function_lens_entry_cannot_insert_code(self):
         self.draft("--function-lens")
         payload = self.proposal()

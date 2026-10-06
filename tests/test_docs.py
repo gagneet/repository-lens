@@ -219,6 +219,18 @@ class JavaScriptMethodAndPrivateTests(unittest.TestCase):
         self.assertEqual([(r.path, len(r.symbols)) for r in results], [("src/a.ts", 1)])
 
 
+    @unittest.skipUnless(__import__("shutil").which("git"), "git is not installed")
+    def test_files_git_ignores_are_not_measured(self):
+        import subprocess
+        tree = Tree({"src/a.ts": "/** A. */\nexport function a() {}\n", ".gitignore": "src/public/swagger/\n"})
+        try:
+            subprocess.run(["git", "init", "-q"], cwd=tree.root, check=True)
+            tree.write({"src/public/swagger/bundle.js": "export function b() {}\n"})
+            results = coverage.measure(tree.settings)
+        finally:
+            tree.close()
+        self.assertEqual([r.path for r in results], ["src/a.ts"])
+
 class RatchetTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tree = Tree({"pkg/a.py": '"""A."""\ndef one():\n    pass\n'})

@@ -105,7 +105,10 @@ functions that call an API or touch a store, and exported frontend entry functio
 created from the original path and symbol, then read from the comment thereafter; keep the comment
 with the declaration and Function Lens can find it after a rename or move. It attaches when it
 sits directly above the declaration, among its comments and decorators (up to 12 lines), or directly
-above the declaration's `/** */` block, however long; a blank line or code ends the search. Duplicate ids are
+above the declaration's `/** */` block, however long; a blank line or code ends the search. For a
+function whose arrow starts below its declaration (`export const k =` then `(x) => …` on the next
+line, or `export const GET = withAuth(` then the arrow), the `const` line is the declaration, for the
+id and for the JSDoc. Duplicate ids are
 reported in the index. The comment stores identity only, not inferred callers or data flow, so
 changing code does not leave derived claims behind. It is a comment and has no runtime behavior.
 
@@ -150,6 +153,7 @@ check it with `repolens owners --check`.
 
 Hand `features/<group>.context.json` and the drafted JSDoc to a person or an agent to write
 what the evidence cannot: purpose, business rules, authorization and the request and
-response shapes. `repolens docs coverage --check` ratchets the result, and
+response shapes. `repolens docs coverage --check` ratchets the result (in a git checkout it, like
+`repolens lens`, skips untracked files git ignores, such as a bundle a build copies in), and
 `repolens docs build` renders TypeDoc and pdoc pages from it. Regenerate step 2 after the
 code changes; the generated files carry the build that produced them.

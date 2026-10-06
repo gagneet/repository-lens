@@ -84,6 +84,27 @@ def attached_source_id(lines: list[str], index: int) -> str | None:
     return None
 
 
+#: Lines a declaration may run above the line its function starts on.
+_DECL_WINDOW = 3
+
+
+def declaration_line(lines: list[str], index: int, name: str) -> int:
+    """The line that declares `name` when its function starts on `lines[index]`.
+
+    `export const k =` with the arrow on the next line, or `export const GET = withAuth(` with
+    it inside the call: tree-sitter places the function on the arrow's line, yet its id and its
+    JSDoc sit above the `const` line. Steps back, at most `_DECL_WINDOW` lines and only past
+    lines ending mid-statement (`=`, `(`, `,`), to a `const`/`let`/`var` of exactly `name`;
+    otherwise `index` itself.
+    """
+    declares = re.compile(rf"\b(?:const|let|var)\s+{re.escape(name)}(?![\w$])")
+    i = index
+    while (i > 0 and index - i < _DECL_WINDOW and not declares.search(lines[i])
+           and lines[i - 1].rstrip().endswith(("=", "(", ","))):
+        i -= 1
+    return i if declares.search(lines[i]) else index
+
+
 def _jsdoc_start(lines: list[str], end: int) -> int | None:
     """The line opening the `/** */` block that closes on `lines[end]`, or None if it is not JSDoc."""
     i = end
@@ -234,7 +255,7 @@ def _file_churn(s: LensSettings) -> dict[str, dict[str, Any]]:
 def _test_references(s: LensSettings) -> dict[str, list[str]]:
     """symbol -> test files naming it. Word-boundary matched to avoid substrings."""
     refs: dict[str, set[str]] = defaultdict(set)
-    for path in iter_files(s.root, [s.tests_dir], s.test_extensions, s.skip_parts):
+    for path in iter_files(s.root, [s.tests_dir], s.test_extensions, s.skip_parts, respect_gitignore=True):
         text = read_text_or_none(path)
         if text is None:
             continue
@@ -433,13 +454,14 @@ def _extract_frontend(s: LensSettings, path: Path, module_tags: list[str],
         for symbol in facts.symbols:
             if symbol.kind != "function":
                 continue
+            anchor = declaration_line(lines, symbol.line - 1, symbol.name)
             out.append({
                 "key": f"{rel}::{symbol.qualified}", "path": rel, "name": symbol.name,
                 "qualname": symbol.qualified, "language": language, "lineno": symbol.line,
                 "is_async": symbol.is_async, "is_private": symbol.name.startswith("_"),
-                "purpose": _jsdoc_purpose(s, lines, symbol.line - 1),
+                "purpose": _jsdoc_purpose(s, lines, anchor),
                 "feature_tags": module_tags, "layer": layer, "routes": [],
-                "source_id": attached_source_id(lines, symbol.line - 1),
+                "source_id": attached_source_id(lines, anchor),
                 # JSX renders are recorded beside calls; a rendered component is not a callee.
                 "callees": sorted({called.rsplit(".", 1)[-1] for owner, called, _line, kind in facts.calls
                                    if owner == symbol.qualified and kind == "CALLS"}),
@@ -533,7 +555,7 @@ def build(s: LensSettings, with_churn: bool = False) -> dict[str, Any]:
         (s.python_roots, [".py"], partial(_extract_python, orm=orm)),
         (s.frontend_roots, s.frontend_extensions, _extract_frontend),
     ):
-        for path in iter_files(s.root, roots, suffixes, s.skip_parts):
+        for path in iter_files(s.root, roots, suffixes, s.skip_parts, respect_gitignore=True):
             tags, layer = _module_context(path)
             records.extend(extract(s, path, tags, layer))
 
@@ -672,9 +694,9 @@ def source_stamp(s: LensSettings) -> str:
     h = hashlib.sha256(json.dumps({f.name: _canonical(getattr(s, f.name)) for f in fields(s)},
                                   sort_keys=True).encode())
     inputs = {
-        *iter_files(s.root, s.python_roots, [".py"], s.skip_parts),
-        *iter_files(s.root, s.frontend_roots, s.frontend_extensions, s.skip_parts),
-        *iter_files(s.root, [s.tests_dir], s.test_extensions, s.skip_parts),
+        *iter_files(s.root, s.python_roots, [".py"], s.skip_parts, respect_gitignore=True),
+        *iter_files(s.root, s.frontend_roots, s.frontend_extensions, s.skip_parts, respect_gitignore=True),
+        *iter_files(s.root, [s.tests_dir], s.test_extensions, s.skip_parts, respect_gitignore=True),
         *(s.root / p for p in (s.owners_yaml, s.datastore_json) if p),
     }
     for path in sorted(inputs):
