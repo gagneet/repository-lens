@@ -242,7 +242,8 @@ class AddSqlTests(unittest.TestCase):
                                          ("items", "db/rls.sql:3"): "declares",
                                          ("public.customers", "db/rls.sql:4"): "declares",
                                          ("things", "db/rls.sql:5"): "declares"})
-        self.assertEqual(set(self.codes()), {("SQL_UNSUPPORTED_STATEMENT", "info")})
+        # The lexical reader records everything these do, so they are read, not "unsupported".
+        self.assertEqual(self.codes(), [])
         self.assertTrue(self.complete())
 
     def test_gated_prose_is_ignored_and_unparseable_gated_sql_is_only_info(self):
@@ -380,7 +381,7 @@ class AddSqlTests(unittest.TestCase):
                      "db/mixed.sql")
         self.assertEqual([(i.code, i.evidence) for i in self.graph.issues],
                          [("SQL_PARSE_ERROR", "db/mixed.sql:1"), ("SQL_PARSE_ERROR", "db/mixed.sql:2"),
-                          ("SQL_PARSE_ERROR", "db/mixed.sql:3"), ("SQL_UNSUPPORTED_STATEMENT", "db/mixed.sql:4")])
+                          ("SQL_PARSE_ERROR", "db/mixed.sql:3")])
         self.assertEqual(self.names(), {"invoices": "declares", "items": "declares"})
         self.assertFalse(self.complete())
 
@@ -420,6 +421,51 @@ class AddSqlTests(unittest.TestCase):
                                          ("audit", "db/rules.sql:2"): "writes in rule action",
                                          ("audit_copy", "db/rules.sql:2"): "writes in rule action"})
         self.assertEqual({i.code for i in self.graph.issues}, {"SQL_UNSUPPORTED_STATEMENT"})
+
+    def test_temp_tables_dropped_on_commit_and_newline_joined_strings_parse(self):
+        # Valid PostgreSQL sqlglot rejects: `ON COMMIT DROP` (kept as a Command, then a
+        # parse error) and string literals PostgreSQL joins across a newline.
+        text = ("create temp table tmp_forced (rel regclass primary key) on commit drop;\n"
+                "create temp table tmp_units (calc_id text, unit text,\n  primary key (calc_id)) on commit drop;\n"
+                "comment on function app.f() is\n  'it''s one '\n  'sentence';\n"
+                "comment on table app.t is 'on commit drop' -- 'x'\n  ;\n")
+        add_sql_file(self.graph, "src", text, "db/tmp.sql")
+        self.assertEqual(self.tables(), {("tmp_forced", "db/tmp.sql:1"): "declares", ("tmp_units", "db/tmp.sql:2"): "declares",
+                                         ("app.t", "db/tmp.sql:7"): "declares"})
+        self.assertEqual(self.codes(), [])
+        self.assertTrue(self.complete())
+        add_sql_file(self.graph, "src", "comment on table app.t is 'a' 'b';\n", "db/same_line.sql")
+        self.assertEqual(self.codes(), [("SQL_PARSE_ERROR", "warning")])  # PostgreSQL rejects that too
+
+    def test_policy_expressions_routine_bodies_and_dcl_are_read_not_unsupported(self):
+        text = ("create policy p on app.issue for all to app_user\n"
+                "  using (org_id = (select app.current_org()) and exists (select 1 from app.case_file c where c.id = case_id))\n"
+                "  with check (exists (select 1 from app.case_party x where x.id = 1));\n"
+                "drop policy if exists p on app.issue;\n"
+                "drop trigger if exists t on app.issue;\n"
+                "create or replace function app.apl(p date default null) returns setof app.product\n"
+                "language sql stable set search_path = pg_catalog, app as $$\n  select p.* from app.product p;\n$$;\n"
+                "grant execute on function app.a(uuid, uuid), app.b(uuid) to app_user;\n"
+                "revoke all on function app.a(uuid, uuid) from public;\n"
+                "do $$ begin update app.counter set n = 0; end $$;\n")
+        add_sql_file(self.graph, "src", text, "db/rls.sql")
+        self.assertEqual(self.tables(), {("app.issue", "db/rls.sql:1"): "declares", ("app.case_file", "db/rls.sql:1"): "reads in policy",
+                                         ("app.case_party", "db/rls.sql:1"): "reads in policy",
+                                         ("app.issue", "db/rls.sql:4"): "declares", ("app.issue", "db/rls.sql:5"): "declares",
+                                         ("app.product", "db/rls.sql:6"): "reads in function body",
+                                         ("app.counter", "db/rls.sql:12"): "writes in function body"})
+        self.assertEqual(self.codes(), [])
+
+    def test_dynamic_do_blocks_rules_and_maintenance_stay_reported(self):
+        add_sql_file(self.graph, "src",
+                     "do $$ declare t text; begin foreach t in array array['a','b'] loop\n"
+                     "  execute format('alter table %I enable row level security', t); end loop; end $$;\n"
+                     "create rule r as on update to orders do instead nothing;\nvacuum orders;\n"
+                     "do $$ begin perform 1; raise notice 'execute'; end $$;\n", "db/dyn.sql")
+        self.assertEqual([(i.code, i.evidence) for i in self.graph.issues],
+                         [("SQL_UNSUPPORTED_STATEMENT", "db/dyn.sql:1"), ("SQL_UNSUPPORTED_STATEMENT", "db/dyn.sql:3"),
+                          ("SQL_UNSUPPORTED_STATEMENT", "db/dyn.sql:4")])
+        self.assertTrue(self.complete())
 
     def test_a_rule_event_keyword_is_never_a_table(self):
         add_sql_file(self.graph, "src", "CREATE RULE r AS ON UPDATE TO orders DO INSTEAD NOTHING;\n"

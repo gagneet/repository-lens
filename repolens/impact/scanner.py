@@ -29,7 +29,7 @@ from .render import mark_unverified_stores, unverified_stores
 from ..core import javascript
 from ..core.files import is_test_path
 
-SCANNER_REVISION = 10
+SCANNER_REVISION = 11
 
 
 FEATURE_RE = re.compile(r"@featuretrace:([A-Za-z0-9_.-]+)")

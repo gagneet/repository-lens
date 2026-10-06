@@ -457,15 +457,36 @@ def _one_statement_the_parser_splits(sql: str) -> bool:
 
 
 _GENERATED_AS = re.compile(r"\bGENERATED\s+ALWAYS\s+AS\s*\(", re.I)
+_ON_COMMIT_DROP = re.compile(r"\bON\s+COMMIT\s+DROP\b", re.I)
+# A run of string literals separated by whitespace holding a newline is ONE literal in
+# PostgreSQL (`'a'\n'b'` is `'ab'`). Single literals, dollar quotes, quoted identifiers
+# and comments are matched too, only so the scan never starts inside one.
+_STRING_RUN = re.compile(r"(?P<run>'(?:[^']|'')*'(?:[ \t\r\f\v]*\n\s*'(?:[^']|'')*')+)|'(?:[^']|'')*'"
+                         r"|\$(?P<tag>(?:[A-Za-z_]\w*)?)\$.*?\$(?P=tag)\$|\"(?:[^\"]|\"\")+\"|--[^\n]*|/\*.*?\*/", re.S)
+
+
+def _joined_strings(sql: str) -> str:
+    """`sql` with each run of newline-separated string literals written as one literal."""
+    def join(match: re.Match) -> str:
+        if match.group("run") is None:
+            return match.group(0)
+        return "'" + "".join(part[1:-1] for part in re.findall(r"'(?:[^']|'')*'", match.group("run"))) + "'"
+    return _STRING_RUN.sub(join, sql)
 
 
 def _parser_workaround(sql: str) -> str | None:
-    """`sql` with each `GENERATED ALWAYS AS (expr)` written `((expr))`, or None if it has none.
+    """`sql` rewritten around known sqlglot gaps in valid PostgreSQL, or None if none applies.
 
-    sqlglot (28 to at least 30.18) rejects a comparison as a generated column's whole
-    expression, `GENERATED ALWAYS AS (s >= 0.995) STORED`, which is valid PostgreSQL.
-    The extra parentheses mean the same thing and parse. Strings and comments are
-    masked first, so text inside them is never taken for a clause."""
+    - sqlglot (28 to at least 30.18) rejects a comparison as a generated column's whole
+      expression, `GENERATED ALWAYS AS (s >= 0.995) STORED`; written `((expr))` it parses.
+    - It keeps `CREATE TEMP TABLE t (…) ON COMMIT DROP` as a Command; `ON COMMIT DELETE
+      ROWS` parses, and the table and columns it declares are the same.
+    - It rejects adjacent string literals (`COMMENT ON … IS 'a'\n  'b'`), which
+      PostgreSQL concatenates when a newline separates them; they become one literal.
+
+    Strings and comments are masked first, so text inside them is never taken for a clause."""
+    original = sql
+    sql = _joined_strings(sql)
     masked = _mask(sql)
     spans = []
     for match in _GENERATED_AS.finditer(masked):
@@ -477,7 +498,9 @@ def _parser_workaround(sql: str) -> str | None:
                 break
     for start, end in reversed(spans):
         sql = f"{sql[:start]}({sql[start:end + 1]}){sql[end + 1:]}"
-    return sql if spans else None
+    for match in reversed(list(_ON_COMMIT_DROP.finditer(_mask(sql)))):
+        sql = f"{sql[:match.start()]}ON COMMIT DELETE ROWS{sql[match.end():]}"
+    return sql if sql != original else None
 
 
 _POSITIONAL_BIND = re.compile(r"\$[1-9]\d*\b")
@@ -555,9 +578,14 @@ def _recover(statement: str) -> list[tuple[str, str]] | None:
         return None
     text = _strip_leading(statement)
     if re.match(r"^CREATE\s+(?:OR\s+REPLACE\s+)?(?:FUNCTION|PROCEDURE)\b", text, re.I):
-        atomic = _ATOMIC_BODY.search(_mask(text))
-        return _body_tables(text[atomic.start("body"):atomic.end("body")]) if atomic else []
+        if atomic := _ATOMIC_BODY.search(_mask(text)):
+            return _body_tables(text[atomic.start("body"):atomic.end("body")])
+        # `AS $$ … $$`: the routine's only dollar-quoted string is its body.
+        body = next((m.group("d") for m in _LEXEMES.finditer(text) if m.group("d")), None)
+        return _body_tables(body) if body else []
     found: list[tuple[str, str]] = []
+    if re.match(r"^(?:CREATE|ALTER)\s+POLICY\b", text, re.I):
+        found = _policy_tables(text)
     if _RULE_START.match(text) and (action := _RULE_ACTION.search(_mask(text))):
         # What the rule does to other tables: `DO ALSO (INSERT INTO audit …; …)`.
         body = text[action.end():].strip()
@@ -578,6 +606,47 @@ def _recover(statement: str) -> list[tuple[str, str]] | None:
     # An unquoted SQL keyword where a table belongs means the pattern misread the grammar.
     return [(name, relationship) for name, relationship in found
             if not (name.lower() in _NOT_TABLE_WORDS and name == name.lower())]
+
+
+_POLICY_EXPRESSION = re.compile(r"\b(?:USING|WITH\s+CHECK)\s*\(", re.I)
+
+
+def _policy_tables(text: str) -> list[tuple[str, str]]:
+    """Tables a policy's `USING (…)` and `WITH CHECK (…)` expressions read (`EXISTS (SELECT … FROM t)`)."""
+    masked = _mask(text)
+    found: list[tuple[str, str]] = []
+    for match in _POLICY_EXPRESSION.finditer(masked):
+        depth = 0
+        for index in range(match.end() - 1, len(masked)):
+            depth += {"(": 1, ")": -1}.get(masked[index], 0)
+            if depth == 0:
+                tables = _body_statement_tables("SELECT " + text[match.end():index]) or []
+                found += [(name, relationship.replace(" in function body", " in policy")) for name, relationship in tables]
+                break
+    return found
+
+
+# Kinds whose whole effect on the graph the lexical reader records: the table (or nothing)
+# they declare, a policy's expression tables, a routine's or DO block's body. These are
+# read, not "unsupported". A DO block that EXECUTEs a string is dynamic and stays reported,
+# as do rules, event triggers, maintenance commands and every kind not listed here.
+_MODELLED = re.compile(
+    r"^(?:ALTER\s+TABLE|(?:CREATE|ALTER|DROP)\s+POLICY|CREATE\s+(?:OR\s+REPLACE\s+)?(?:CONSTRAINT\s+)?TRIGGER"
+    r"|(?:ALTER|DROP)\s+TRIGGER|DO|GRANT|REVOKE|ALTER\s+DEFAULT\s+PRIVILEGES|COMMENT\s+ON"
+    r"|CREATE\s+(?:OR\s+REPLACE\s+)?(?:FUNCTION|PROCEDURE)|(?:ALTER|DROP)\s+(?:FUNCTION|PROCEDURE|ROUTINE)"
+    r"|(?:CREATE|ALTER|DROP)\s+(?:ROLE|USER|GROUP|SCHEMA|EXTENSION|TYPE|DOMAIN|SEQUENCE))\b", re.I)
+_PLPGSQL_EXECUTE = re.compile(r"\bEXECUTE\b(?!\s+(?:FUNCTION|PROCEDURE)\b)", re.I)
+
+
+def lexically_modelled(statement: str) -> bool:
+    """Is `statement` a known kind whose effect the lexical reader records in full?"""
+    text = _strip_leading(statement)
+    if not _MODELLED.match(text):
+        return False
+    if re.match(r"^DO\b", text, re.I):
+        body = next((m.group("d") for m in _LEXEMES.finditer(text) if m.group("d")), "")
+        return not _PLPGSQL_EXECUTE.search(_mask(body[body.index("$", 1) + 1:] if body else ""))
+    return True
 
 
 # ── reading a syntax tree ────────────────────────────────────────────────────────
@@ -904,6 +973,12 @@ def add_sql(graph: Graph, source: str, sql: str, location: str, *, dynamic: bool
                 if rewritten == sql:
                     raise
                 expressions = sqlglot.parse(rewritten, read="postgres", error_level=sqlglot.errors.ErrorLevel.RAISE)
+            if any(isinstance(e, exp.Command) for e in expressions) and (rewritten := _parser_workaround(sql)):
+                # A gap the parser falls back to a Command on (`ON COMMIT DROP`) rather than raising.
+                with contextlib.suppress(Exception):
+                    retried = sqlglot.parse(rewritten, read="postgres", error_level=sqlglot.errors.ErrorLevel.RAISE)
+                    if not any(isinstance(e, exp.Command) for e in retried):
+                        expressions = retried
     except Exception:  # noqa: BLE001 - not only SqlglotError: `GRANT;` raises ValueError, deep nesting RecursionError
         # One statement the parser cannot take is that statement's diagnostic, never the
         # whole file's FILE_SCAN_FAILED with every later statement lost.
@@ -912,8 +987,9 @@ def add_sql(graph: Graph, source: str, sql: str, location: str, *, dynamic: bool
         if recovered is not None:
             # Valid PostgreSQL the parser rejects (`DROP TABLE a, b`, a BEGIN ATOMIC
             # body): a complete statement of a known kind, reported, not a gap.
-            _issue(graph, "SQL_UNSUPPORTED_STATEMENT", "info", "SQL statement was read lexically, without a syntax tree.",
-                   source, location, "Review this statement manually.")
+            if not lexically_modelled(sql):
+                _issue(graph, "SQL_UNSUPPORTED_STATEMENT", "info", "SQL statement was read lexically, without a syntax tree.",
+                       source, location, "Review this statement manually.")
             _emit(graph, source, location, _group(recovered))
         else:
             not_read()
@@ -939,10 +1015,11 @@ def add_sql(graph: Graph, source: str, sql: str, location: str, *, dynamic: bool
                     continue
                 if str(expression.this).upper() == "DO":
                     tables += _body_tables(expression.expression)
-                # Not an analysis gap: the statement parsed as a command whose effects
-                # this reader does not model. Listed so a reviewer can look at it.
-                _issue(graph, "SQL_UNSUPPORTED_STATEMENT", "info", "SQL statement has no supported syntax tree.",
-                       source, location, "Review this statement manually.")
+                # Not an analysis gap: the statement parsed as a command. Its kind is
+                # listed for a reviewer unless the lexical reader models all it does.
+                if not lexically_modelled(text):
+                    _issue(graph, "SQL_UNSUPPORTED_STATEMENT", "info", "SQL statement has no supported syntax tree.",
+                           source, location, "Review this statement manually.")
                 found.extend(tables)
                 continue
             try:

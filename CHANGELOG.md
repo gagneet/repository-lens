@@ -463,6 +463,17 @@ repository. `pyproject.toml` still says 0.3.0.
 
 ### Fixed
 
+- Valid PostgreSQL was `SQL_PARSE_ERROR`, which made the analysis incomplete:
+  `CREATE TEMP TABLE … ON COMMIT DROP` (SQLGlot keeps it as a Command) and string literals that
+  PostgreSQL joins across a newline (`COMMENT ON … IS 'a'` then `'b'` on the next line). Both are
+  rewritten for the parser and read as the tables and comment they are.
+- `SQL_UNSUPPORTED_STATEMENT` no longer lists DDL the lexical reader records in full: `ALTER TABLE`
+  (RLS, triggers, columns), policies, triggers, `GRANT`/`REVOKE`, default privileges, `COMMENT ON`,
+  routines, roles, schemas, extensions, types, domains, sequences, and DO blocks that do not
+  `EXECUTE` a string. A policy's `USING`/`WITH CHECK` expressions now record the tables they read
+  (`reads in policy`), and a `$$` routine body the parser kept as text (`SET search_path = …` before
+  `AS`) is read like any other. Rules, event triggers, maintenance commands and dynamic DO blocks are
+  still listed. On a 69-migration schema: 4 parse errors → 0, 551 infos → 35.
 - `gates` reported every shell and SQL validation script as `gates/cannot-fail`: only a Python
   `return 1` or a gate flag counted. It now also recognises shell `exit 1`/`exit "$rc"` and errexit
   (`set -e`, `set -euo pipefail`), SQL `RAISE EXCEPTION`/`ASSERT`, and `sys.exit(1)`/`raise SystemExit(…)`,
@@ -501,6 +512,8 @@ repository. `pyproject.toml` still says 0.3.0.
   edges and SQL foreign-key `REFERENCES` edges. Consumers that enumerate edge kinds should accept them.
 - `TODO\(repolens\)` is always a `[docs] placeholder_patterns` entry, whatever the repository lists
   (including the `[]` that `repolens init` writes), so drafted JSDoc stays undocumented until edited.
+- **Scanner revision 11**: PostgreSQL policies gain `reads in policy` table edges and `$$` routine
+  bodies kept as text gain their tables; expect far fewer `SQL_UNSUPPORTED_STATEMENT` infos.
 - **Scanner revision 10** (9 for the field-evaluation fixes, 10 for route parameter names, `DEFINES`
   and SQL foreign keys): cached impact indexes are rebuilt. Revision 10 adds `DEFINES` and
   `REFERENCES` edges. From revision 9, expect fewer `CALLS_API` links and stores:
