@@ -128,8 +128,23 @@ class ImportResolutionTests(Repo):
         self.assertNotIn(("main", "fetch"), calls)
         self.assertNotIn(("main", "resolve"), calls)
         self.assertIn(("main", "local"), calls)
+        # The module's own top-level declaration is what the bare name binds to.
+        self.assertEqual({e.resolution for e in self.graph.edges if e.kind == "CALLS"
+                          and self.graph.nodes[e.target].label == "local"}, {"high"})
         self.assertIn(("boot", "helper"), calls)
         self.assertNotIn("AMBIGUOUS_CALL", self.codes())
+
+    def test_a_use_server_prologue_marks_the_file_and_never_backtracks(self):
+        from repolens.impact.scanner import _USE_SERVER
+        for text in ('"use server";\n', "// actions\n/* x */\n'use strict';\n'use server'\n", '\ufeff"use server"'):
+            self.assertTrue(_USE_SERVER.match(text), text)
+        started = time.perf_counter()
+        for text in ('const a = "use server";', "\n// " * 5000 + "x", "/* a */ " * 5000, " " * 50000 + "x"):
+            self.assertIsNone(_USE_SERVER.match(text))
+        self.assertLess(time.perf_counter() - started, 1.0)
+        self.write("app/actions.ts", '"use server";\nexport async function save() {}\n')
+        self.scan()
+        self.assertEqual(self.node("app/actions.ts", "file").metadata.get("directive"), "use server")
 
     def test_a_barrel_export_star_and_a_renamed_reexport_resolve(self):
         self.write("lib/a.ts", "export const arrow = () => 1;\nexport function inner(){}")

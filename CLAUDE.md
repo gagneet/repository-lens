@@ -91,7 +91,9 @@ on top of the repository policy.
   5. call resolution: import bindings, JS barrels and export aliases, Python package
      re-exports, `self`/`this` methods, then name-only fallback; `external:` bindings
      mean package imports and never name-match, and a bare JS/TS name in an ES module
-     (`scanner._es_module`) matches only a definition in the same file
+     (`scanner._es_module`) matches only a definition in the same file (`high`, `module_scope`, when it is
+     the module's one top-level declaration of that name); a JSX attribute value (`PASSES`) links only
+     through an import
   6. declared artifacts, then the `API_PREFIX_ALREADY_RESOLVED` note
   7. `_match_endpoints` (route-shape matching, always `probable`)
   8. endpoint gaps (`API_CALL_WITHOUT_HANDLER`, `API_METHOD_MISMATCH`), structural

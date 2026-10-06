@@ -463,6 +463,15 @@ repository. `pyproject.toml` still says 0.3.0.
 
 ### Fixed
 
+- `featuretrace propose` drafted empty page markers for Next.js applications that reach their data
+  without an HTTP route. A page now flows through the `"use server"` actions it calls or hands to a
+  JSX attribute (`<form action={save}>`), the server-module functions a server component calls, and
+  its own queries, to the stores they reach (`page /x → action save, server load → t (draft)`); those
+  files are `Related:`, and an action module's flow starts at its pages. Evidence stays import-bound:
+  a JSX attribute value links only through an import (new `PASSES` call kind, recorded as `CALLS`), and
+  a bare name in an ES module binds to that module's own top-level declaration (`high`,
+  `origin="module_scope"`) instead of a `probable` name match. A `"use server"` prologue is recorded
+  as file metadata `directive`. On a 101-file Next.js app: empty page flows 41 → 3, `Related: none` 51 → 7.
 - A bare call in a JS/TS module (`fetch(…)`, `setTimeout(…)`, a `resolve` parameter) was name-matched
   to same-named functions in other modules, as `probable` or `AMBIGUOUS_CALL` edges. ES modules share
   no scope, so a bare name that is neither imported nor defined in the file is now left unlinked
@@ -529,8 +538,10 @@ repository. `pyproject.toml` still says 0.3.0.
   `repolens docs coverage --update-baseline` once after upgrading, or set `[docs] javascript_roots = []`
   (and a `javascript_kinds` without `"method"`) to keep the old count.
 - **Scanner revision 11**: PostgreSQL policies gain `reads in policy` table edges and `$$` routine
-  bodies kept as text gain their tables; expect far fewer `SQL_UNSUPPORTED_STATEMENT` infos, and bare JS/TS
-  calls in ES modules lose their cross-module name-only `CALLS` edges.
+  bodies kept as text gain their tables; expect far fewer `SQL_UNSUPPORTED_STATEMENT` infos, bare JS/TS
+  calls in ES modules lose their cross-module name-only `CALLS` edges, same-module calls become
+  `high` (`module_scope`), and functions handed to JSX attributes through an import gain `CALLS`
+  edges. Page feature groups now include the stores a page's confident calls reach.
 - **Scanner revision 10** (9 for the field-evaluation fixes, 10 for route parameter names, `DEFINES`
   and SQL foreign keys): cached impact indexes are rebuilt. Revision 10 adds `DEFINES` and
   `REFERENCES` edges. From revision 9, expect fewer `CALLS_API` links and stores:

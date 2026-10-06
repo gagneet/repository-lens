@@ -174,6 +174,9 @@ def feature_groups(graph: Graph, *, depth: int = 4) -> dict[str, FeatureGroup]:
         for component in components:
             target.add_file(path_of(component), "frontend")
             page_files.add(path_of(component) or "")
+            # A server component or a Next.js server action reaches data with no HTTP route:
+            # the stores its confident (import-bound) calls reach belong to the page's group.
+            add_stores(target, reach(outgoing, component, depth), {path_of(component)})
     for node in sorted(graph.nodes.values(), key=lambda n: n.id):
         if node.kind != "endpoint" or status.get(node.id) in {"matched", "open", "uncalled"}:
             continue

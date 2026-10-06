@@ -111,7 +111,8 @@ class JSFacts:
     reexports: list[tuple[str, str, str, int]] = field(default_factory=list)
     # public export name -> local binding it exports.
     exports: dict[str, str] = field(default_factory=dict)
-    # (owning symbol, callee, line, relationship CALLS|RENDERS)
+    # (owning symbol, callee, line, relationship CALLS|RENDERS|PASSES); PASSES is a function
+    # handed to a JSX attribute by reference (`<form action={save}>`).
     calls: list[tuple[str, str, int, str]] = field(default_factory=list)
     requests: list[Request] = field(default_factory=list)
     # local HTTP client binding -> literal base URL ("" when it has none or it is not literal)
@@ -1552,6 +1553,16 @@ def parse_source(text: str, suffix: str) -> JSFacts:
             # Lower-case JSX names are host elements (<div>), not components.
             if element[:1].isupper() and re.fullmatch(r"[\w$]+(?:\.[\w$]+)*", element):
                 facts.calls.append((owner, element, line, "RENDERS"))
+            # `<form action={save}>`, `onClick={remove}`: a function handed over by reference
+            # runs when the element fires it. The scanner links it only through an import.
+            for attribute in node.named_children:
+                if attribute.type == "jsx_attribute" and len(attribute.named_children) == 2 \
+                        and attribute.named_children[1].type == "jsx_expression" \
+                        and len(attribute.named_children[1].named_children) == 1 \
+                        and attribute.named_children[1].named_children[0].type in {"identifier", "member_expression"}:
+                    passed = value(attribute.named_children[1].named_children[0])
+                    if re.fullmatch(r"[\w$]+(?:\.[\w$]+)*", passed):
+                        facts.calls.append((owner, passed, line, "PASSES"))
         if kind != "call_expression":
             continue
         function = node.child_by_field_name("function")
