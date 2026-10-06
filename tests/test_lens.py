@@ -111,6 +111,60 @@ class FrontendExtractionTests(unittest.TestCase):
         self.assertTrue(all(item["source_id_duplicate"] for item in lookup(data, "fn-orders-list")))
 
 
+class JSDocAttachmentTests(unittest.TestCase):
+    """An `@functionlens` id sits above a declaration's JSDoc (a line comment between the two
+    would hide the JSDoc from ESLint's jsdoc rules), and the JSDoc is the function's purpose.
+    Read with the default regex parser, which needs no extra."""
+
+    LONG_DOC = "/**\n" + "".join(f" * Line {n} of a long description.\n" for n in range(20)) + " */\n"
+
+    def records(self, source: str, lens: str = "") -> dict[str, dict]:
+        from repolens.lens.build import build
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name)
+        (root / "repolens.toml").write_text('[lens]\npython_roots = []\nfrontend_roots = ["web"]\n' + lens,
+                                            encoding="utf-8")
+        (root / "web").mkdir()
+        (root / "web" / "a.ts").write_text(source, encoding="utf-8")
+        return {r["name"]: r for r in build(from_config(load_config(root)))["functions"].values()}
+
+    def test_an_id_above_a_jsdoc_block_attaches_however_long_the_block_is(self):
+        recs = self.records("// @functionlens:fn-long\n" + self.LONG_DOC + "export function longDoc() {}\n")
+        self.assertEqual(recs["longDoc"]["source_id"], "fn-long")
+
+    def test_an_id_does_not_attach_across_another_declaration(self):
+        recs = self.records("// @functionlens:fn-first\nexport function first() {}\n"
+                            + self.LONG_DOC + "export function second() {}\n")
+        self.assertEqual((recs["first"]["source_id"], recs["second"]["source_id"]), ("fn-first", None))
+
+    def test_other_comments_keep_the_twelve_line_window(self):
+        recs = self.records("// @functionlens:fn-far\n" + "// note\n" * 12 + "export function far() {}\n")
+        self.assertIsNone(recs["far"]["source_id"])
+
+    def test_the_jsdoc_first_paragraph_is_the_purpose_of_functions_and_arrow_constants(self):
+        recs = self.records(
+            "// @functionlens:fn-load\n/**\n * Loads the orders\n * of one client.\n *\n * Not the summary.\n * @param id the order\n */\n"
+            "export async function load(id: string) {}\n"
+            "/** Saves an order. */\nexport const save = async (id: string): Promise<void> => {};\n"
+            "export function bare() {}\n")
+        self.assertEqual({name: recs[name]["purpose"] for name in recs},
+                         {"load": "Loads the orders of one client.", "save": "Saves an order.", "bare": ""})
+
+    @unittest.skipUnless(__import__("importlib").util.find_spec("tree_sitter"), "requires repolens[stack]")
+    def test_the_tree_sitter_parser_reads_ids_and_jsdoc_the_same_way(self):
+        recs = self.records("// @functionlens:fn-long\n" + self.LONG_DOC + "export function longDoc() {}\n"
+                            "/** Saves an order. */\nexport const save = (id: string) => id;\n",
+                            'javascript_parser = "tree-sitter"\n')
+        self.assertEqual((recs["longDoc"]["source_id"], recs["longDoc"]["purpose"], recs["save"]["purpose"]),
+                         ("fn-long", " ".join(f"Line {n} of a long description." for n in range(20)), "Saves an order."))
+
+    def test_drafting_ids_sees_an_existing_id_above_a_long_jsdoc(self):
+        from repolens.featuretrace.propose import _has_function_lens_id
+        lines = ("// @functionlens:fn-long\n" + self.LONG_DOC + "export function longDoc() {}\n").splitlines()
+        self.assertTrue(_has_function_lens_id(lines, len(lines) - 1))
+
+
 class JavascriptParserSettingTests(unittest.TestCase):
     """The frontend parser is configured, never detected, and recorded, so an
     optional extra cannot change a committed artefact."""

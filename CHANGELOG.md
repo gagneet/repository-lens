@@ -463,6 +463,18 @@ repository. `pyproject.toml` still says 0.3.0.
 
 ### Fixed
 
+- Function Lens looked for an `@functionlens:` id only within 12 lines above a declaration, so an id
+  written above a longer JSDoc block (where it must go: a line comment between the JSDoc and the
+  function hides the JSDoc from ESLint's jsdoc rules) did not attach. A `/** */` block is now skipped
+  whole, however long; other comments and decorators keep the 12-line window, and a blank line or
+  code still stops the search. `featuretrace propose --function-lens` uses the same rule
+  (`lens.build.attached_source_id`), so it no longer drafts a second id there. On a Next.js
+  monorepo: 77 → 86 of 86 ids attach.
+- Function Lens reported "no docstring" for every JS/TS function. The JSDoc block directly above a
+  declaration (`function`, `export const f = (…) =>`, and with an `@functionlens:` line above it) is
+  now its purpose: the first paragraph, joined onto one line, up to the first `@` tag. Both
+  `javascript_parser` settings read it; `[lens] placeholder_prefixes` applies.
+
 - `featuretrace propose` drafted empty page markers for Next.js applications that reach their data
   without an HTTP route. A page now flows through the `"use server"` actions it calls or hands to a
   JSX attribute (`<form action={save}>`), the server-module functions a server component calls, and
@@ -528,6 +540,8 @@ repository. `pyproject.toml` still says 0.3.0.
 
 ### Upgrade notes
 
+- Regenerate the Function Lens digest after upgrading: JS/TS records gain a `purpose` from their
+  JSDoc, and ids above long JSDoc blocks now attach, so `lens --check` reports the old digest stale.
 - Regenerate the Function Lens digest after upgrading. Function records now include `source_id`
   and duplicate-id state, and TypeScript functions now contribute to the frontend count.
 - `analysis.json` endpoint and page nodes gain `path` and `parameters`, and the graph gains `DEFINES`

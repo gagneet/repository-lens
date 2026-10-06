@@ -48,6 +48,7 @@ from ..core.files import is_test_path
 from ..docs.coverage import _jsdoc_before
 from ..impact.features import (CONFIDENT, HANDLER_EDGES, LAYERS, STORE_EDGES, FeatureGroup, edge_index,
                                endpoint_status, feature_groups, reach, route_path)
+from ..lens.build import attached_source_id
 from .audit import MARKABLE_SUFFIXES, REF_PATH_RE, STORE_TOKEN_RE, AuditContext, markers_for
 from .model import iter_files as featuretrace_files
 from .settings import FTSettings, from_config
@@ -560,21 +561,12 @@ def _function_lens_id(path: str, qualified: str) -> str:
 
 
 def _has_function_lens_id(lines: list[str], index: int) -> bool:
-    """Whether the declaration at `index` already has a nearby Function Lens id.
+    """Whether the declaration at `index` already has an attached Function Lens id.
 
-    Walk only its attached decorators and comments. A blank line or code ends the attachment, so an
-    id belonging to the previous declaration is never reused.
+    Function Lens's own rule (`attached_source_id`), so a draft never adds a second id to a
+    declaration the index already reads one from, nor reuses the previous declaration's.
     """
-    for line in reversed(lines[max(0, index - 12):index]):
-        text = line.strip()
-        if FUNCTION_LENS_RE.match(text):
-            return True
-        if not text:
-            break
-        if text.startswith(("//", "#", "/*", "*", "*/", "@")):
-            continue
-        break
-    return False
+    return attached_source_id(lines, index) is not None
 
 
 def _function_lens_blocks(ev: _Evidence, path: str, lines: list[str], *, python: bool,
