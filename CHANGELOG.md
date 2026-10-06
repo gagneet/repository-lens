@@ -463,6 +463,12 @@ repository. `pyproject.toml` still says 0.3.0.
 
 ### Fixed
 
+- `repolens docs coverage` measured no TypeScript or JavaScript unless `[docs] javascript_roots` was
+  set, so a TS repository without a `repolens.toml` reported only its few Python files. JS/TS is now
+  measured from the root like Python (build output, `node_modules`, tests, `.d.ts` and `.min.js` stay
+  out). The methods of a counted class now count (kind `method`; not the constructor, `set`
+  accessors, overload signatures or `private`/`#name` members), and `include_private = true` also
+  counts file-local functions, classes and function-valued consts.
 - Valid PostgreSQL was `SQL_PARSE_ERROR`, which made the analysis incomplete:
   `CREATE TEMP TABLE … ON COMMIT DROP` (SQLGlot keeps it as a Command) and string literals that
   PostgreSQL joins across a newline (`COMMENT ON … IS 'a'` then `'b'` on the next line). Both are
@@ -512,6 +518,9 @@ repository. `pyproject.toml` still says 0.3.0.
   edges and SQL foreign-key `REFERENCES` edges. Consumers that enumerate edge kinds should accept them.
 - `TODO\(repolens\)` is always a `[docs] placeholder_patterns` entry, whatever the repository lists
   (including the `[]` that `repolens init` writes), so drafted JSDoc stays undocumented until edited.
+- **`docs coverage` baselines** grow by the JS/TS files and class methods now measured. Run
+  `repolens docs coverage --update-baseline` once after upgrading, or set `[docs] javascript_roots = []`
+  (and a `javascript_kinds` without `"method"`) to keep the old count.
 - **Scanner revision 11**: PostgreSQL policies gain `reads in policy` table edges and `$$` routine
   bodies kept as text gain their tables; expect far fewer `SQL_UNSUPPORTED_STATEMENT` infos.
 - **Scanner revision 10** (9 for the field-evaluation fixes, 10 for route parameter names, `DEFINES`

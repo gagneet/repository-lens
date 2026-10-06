@@ -14,10 +14,10 @@ from ..config import Config, load_config, merge
 REPOLENS_PLACEHOLDER = r"TODO\(repolens\)"
 
 DEFAULTS: dict[str, Any] = {
-    # Where the coverage count looks. JavaScript is opt-in: a repository says which of its
-    # directories are source rather than build output or vendored bundles.
+    # Where the coverage count looks. Build output and dependencies are left out by
+    # `skip_parts` and `skip_file_patterns`; a repository narrows either list to its sources.
     "python_roots": ["."],
-    "javascript_roots": [],
+    "javascript_roots": ["."],
     "python_extensions": [".py"],
     "javascript_extensions": [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"],
     # Whole path components; `a/b` is a run of consecutive components.
@@ -26,14 +26,16 @@ DEFAULTS: dict[str, Any] = {
     # Repo-relative path regexes. Tests describe themselves by name; a declaration file
     # restates a type whose documentation lives with its implementation.
     "skip_file_patterns": [r"(^|/)test_[^/]*\.py$", r"(^|/)[^/]*_test\.py$", r"(^|/)conftest\.py$",
-                           r"\.(test|spec|stories)\.[cm]?[jt]sx?$", r"\.d\.ts$"],
+                           r"\.(test|spec|stories)\.[cm]?[jt]sx?$", r"\.d\.ts$", r"\.min\.[cm]?js$"],
     # `_private` names are implementation detail. Dunders are never counted: a class
-    # docstring describes construction, and `__eq__` needs no prose.
+    # docstring describes construction, and `__eq__` needs no prose. In TypeScript and
+    # JavaScript, true also counts file-local (non-exported) functions, classes and
+    # function-valued consts, and `private`/`#name` methods.
     "include_private": False,
     # A module docstring is a public symbol too: it is the first thing a reader sees.
     "count_modules": True,
     # Exported TypeScript/JavaScript declaration kinds that count.
-    "javascript_kinds": ["function", "class", "const", "interface", "type", "enum"],
+    "javascript_kinds": ["function", "class", "method", "const", "interface", "type", "enum"],
     # Regexes. A docstring matching one is boilerplate and counts as MISSING: a generated
     # "Function header" placeholder is not documentation, and counting it as such would
     # let the number rise while nothing a reader can use was written.

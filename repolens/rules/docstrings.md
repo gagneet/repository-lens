@@ -2,8 +2,10 @@
 
 **Rule.** Every public symbol says what it is FOR. In Python that means the module and
 every public class, function and method. In TypeScript and JavaScript it means every
-exported function, class, constant, interface, type and enum. Private helpers (`_name`)
-and dunders are exempt.
+exported function, class, constant, interface, type and enum, and the methods of an
+exported class. Private helpers (`_name`, a non-exported TypeScript function, class or
+function-valued `const`, `private`/`#name` methods), constructors and dunders are exempt
+unless `[docs] include_private = true`.
 
 ## Why
 
@@ -39,8 +41,11 @@ mistaken for progress.
 ## Limits
 
 Python is parsed with `ast`. TypeScript and JavaScript are read with a regex over lines:
-only top-level exported declarations are seen, and a re-export counts where it is
-declared, not where it is re-exported.
+only declarations starting at column 0 and the methods at a class body's own indentation
+are seen (nested functions and callbacks are not), and a re-export counts where it is
+declared, not where it is re-exported. JS/TS is measured from the repository root by
+default (`[docs] javascript_roots`), with build output, `node_modules`, tests, `.d.ts` and
+`.min.js` files left out.
 
 pdoc imports the modules it documents, so a module that needs the whole application to
 import belongs in `[docs.python] exclude`, with the reason written beside it.

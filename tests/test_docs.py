@@ -154,6 +154,71 @@ class JavaScriptCoverageTests(unittest.TestCase):
         self.assertEqual([s.name for s in result.missing], ["bare", "Page", "a", "empty", "plain"])
 
 
+CLASSES = """
+    /** A store. */
+    export class Store {
+      private cache = new Map<string, number>();
+      constructor(private db: Db) {}
+
+      /** Reads one. */
+      async get(id: string): Promise<number> {
+        if (id) {
+          return lookup(id);
+        }
+      }
+      put(id: string): void;
+      put(id: string, value?: number): void {}
+      get size() { return 1; }
+      set size(value) {}
+      private secret() {}
+      #hidden() {}
+      handle = async (event: Event): Promise<void> => {};
+      label = (x + y);
+    }
+
+    class Local {
+      run() {}
+    }
+
+    function helper() {}
+    const arrow = async (a: string) => a;
+    const value = 3;
+    /** TODO(repolens): purpose. */
+    export const drafted = () => 1;
+"""
+
+
+class JavaScriptMethodAndPrivateTests(unittest.TestCase):
+    def measure(self, docs: str = "") -> list[tuple[str, bool]]:
+        tree = Tree({}, docs=docs)
+        try:
+            result = coverage.javascript_file("a.ts", textwrap.dedent(CLASSES), tree.settings)
+        finally:
+            tree.close()
+        return [(s.name, s.documented) for s in result.symbols]
+
+    def test_methods_of_an_exported_class_count_and_private_members_do_not(self):
+        # Not counted: the constructor, the `put` overload signature, the `set` accessor,
+        # `private`/`#` members, fields, and everything file-local. Drafted JSDoc is missing.
+        self.assertEqual(self.measure(), [("Store", True), ("Store.get", True), ("Store.put", False),
+                                          ("Store.size", False), ("Store.handle", False), ("drafted", False)])
+
+    def test_include_private_counts_file_local_functions_classes_and_private_methods(self):
+        names = [name for name, _ in self.measure("include_private = true\n")]
+        self.assertEqual(names, ["Store", "Store.get", "Store.put", "Store.size", "Store.secret", "Store.#hidden",
+                                 "Store.handle", "Local", "Local.run", "helper", "arrow", "drafted"])
+
+    def test_a_repository_without_docs_configuration_measures_its_typescript(self):
+        tree = Tree({"src/a.ts": "/** A. */\nexport function a() {}\n", "public/vendor.min.js": "export function b() {}\n",
+                     "node_modules/x/index.js": "export function c() {}\n"})
+        (tree.root / "repolens.toml").write_text("", encoding="utf-8")
+        try:
+            results = coverage.measure(tree.settings)
+        finally:
+            tree.close()
+        self.assertEqual([(r.path, len(r.symbols)) for r in results], [("src/a.ts", 1)])
+
+
 class RatchetTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tree = Tree({"pkg/a.py": '"""A."""\ndef one():\n    pass\n'})
