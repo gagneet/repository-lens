@@ -463,6 +463,13 @@ repository. `pyproject.toml` still says 0.3.0.
 
 ### Fixed
 
+- Function Lens did not attach the `@functionlens:` id or read the JSDoc of an arrow function that
+  starts on the line after its declaration (`export const k =` then `(x) => …`, or
+  `export const GET = withAuth(` then the arrow) under `javascript_parser = "tree-sitter"`, which
+  places the function on the arrow's line. The `const` line is now the anchor
+  (`lens.build.declaration_line`, at most three lines up, only past lines ending in `=`, `(` or `,`).
+  `featuretrace propose --function-lens` shares it: it skipped such functions, and now drafts the id
+  above their JSDoc and sees one already there. The regex parser already anchored on the `const` line.
 - Function Lens and `docs coverage` indexed untracked files git ignores. A bundle a build copies in
   (a Swagger UI under `public/`) doubled a Next.js monorepo's function count and made `lens --check`
   fail on a tree whose tracked files had not changed. In a git checkout both now skip untracked
@@ -552,6 +559,8 @@ repository. `pyproject.toml` still says 0.3.0.
   checkout has untracked gitignored source under the configured roots (build output, a copied
   bundle): those files are no longer indexed or measured, so the digest changes and the baseline
   loses their entries.
+- Regenerate a Function Lens digest built with `javascript_parser = "tree-sitter"`: arrow functions
+  that start on the line after their declaration gain their `purpose` (and any id above them).
 - Regenerate the Function Lens digest after upgrading: JS/TS records gain a `purpose` from their
   JSDoc, and ids above long JSDoc blocks now attach, so `lens --check` reports the old digest stale.
 - Regenerate the Function Lens digest after upgrading. Function records now include `source_id`

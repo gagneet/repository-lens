@@ -48,7 +48,7 @@ from ..core.files import is_test_path
 from ..docs.coverage import _jsdoc_before
 from ..impact.features import (CONFIDENT, HANDLER_EDGES, LAYERS, STORE_EDGES, FeatureGroup, edge_index,
                                endpoint_status, feature_groups, reach, route_path)
-from ..lens.build import attached_source_id
+from ..lens.build import attached_source_id, declaration_line
 from .audit import MARKABLE_SUFFIXES, REF_PATH_RE, STORE_TOKEN_RE, AuditContext, markers_for
 from .model import iter_files as featuretrace_files
 from .settings import FTSettings, from_config
@@ -590,8 +590,10 @@ def _function_lens_blocks(ev: _Evidence, path: str, lines: list[str], *, python:
                     or (layer == "frontend" and not python and public))
         if not public or not boundary:
             continue
-        index = node.line - 1
-        if index >= len(lines) or node.label not in lines[index] or _has_function_lens_id(lines, index):
+        if node.line > len(lines):
+            continue
+        index = declaration_line(lines, node.line - 1, node.label)
+        if node.label not in lines[index] or _has_function_lens_id(lines, index):
             continue
         while index > 0 and lines[index - 1].strip().startswith("@"):
             index -= 1

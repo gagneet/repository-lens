@@ -84,6 +84,27 @@ def attached_source_id(lines: list[str], index: int) -> str | None:
     return None
 
 
+#: Lines a declaration may run above the line its function starts on.
+_DECL_WINDOW = 3
+
+
+def declaration_line(lines: list[str], index: int, name: str) -> int:
+    """The line that declares `name` when its function starts on `lines[index]`.
+
+    `export const k =` with the arrow on the next line, or `export const GET = withAuth(` with
+    it inside the call: tree-sitter places the function on the arrow's line, yet its id and its
+    JSDoc sit above the `const` line. Steps back, at most `_DECL_WINDOW` lines and only past
+    lines ending mid-statement (`=`, `(`, `,`), to a `const`/`let`/`var` of exactly `name`;
+    otherwise `index` itself.
+    """
+    declares = re.compile(rf"\b(?:const|let|var)\s+{re.escape(name)}(?![\w$])")
+    i = index
+    while (i > 0 and index - i < _DECL_WINDOW and not declares.search(lines[i])
+           and lines[i - 1].rstrip().endswith(("=", "(", ","))):
+        i -= 1
+    return i if declares.search(lines[i]) else index
+
+
 def _jsdoc_start(lines: list[str], end: int) -> int | None:
     """The line opening the `/** */` block that closes on `lines[end]`, or None if it is not JSDoc."""
     i = end
@@ -433,13 +454,14 @@ def _extract_frontend(s: LensSettings, path: Path, module_tags: list[str],
         for symbol in facts.symbols:
             if symbol.kind != "function":
                 continue
+            anchor = declaration_line(lines, symbol.line - 1, symbol.name)
             out.append({
                 "key": f"{rel}::{symbol.qualified}", "path": rel, "name": symbol.name,
                 "qualname": symbol.qualified, "language": language, "lineno": symbol.line,
                 "is_async": symbol.is_async, "is_private": symbol.name.startswith("_"),
-                "purpose": _jsdoc_purpose(s, lines, symbol.line - 1),
+                "purpose": _jsdoc_purpose(s, lines, anchor),
                 "feature_tags": module_tags, "layer": layer, "routes": [],
-                "source_id": attached_source_id(lines, symbol.line - 1),
+                "source_id": attached_source_id(lines, anchor),
                 # JSX renders are recorded beside calls; a rendered component is not a callee.
                 "callees": sorted({called.rsplit(".", 1)[-1] for owner, called, _line, kind in facts.calls
                                    if owner == symbol.qualified and kind == "CALLS"}),

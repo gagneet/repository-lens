@@ -327,7 +327,9 @@ counts as regex). `lens --check` exits 2 with a "committed with X, this run woul
 message before building when they differ, and exits 1 only for real staleness.
 In a git checkout the lens and `docs coverage` walk skip untracked
 gitignored files (`iter_files(..., respect_gitignore=True)`, always on; `[impact] respect_gitignore`
-does not reach them).
+does not reach them). A function's anchor line for its id and JSDoc is its declaration's
+(`lens.build.declaration_line`), which `featuretrace propose` shares: tree-sitter places an arrow
+that starts below `export const k =` on the arrow's line.
 
 ### Local API (`repolens/api/app.py`)
 `create_app(root, token)` serves one fixed checkout. It uses TrustedHost with loopback

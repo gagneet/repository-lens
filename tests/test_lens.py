@@ -159,6 +159,25 @@ class JSDocAttachmentTests(unittest.TestCase):
         self.assertEqual((recs["longDoc"]["source_id"], recs["longDoc"]["purpose"], recs["save"]["purpose"]),
                          ("fn-long", " ".join(f"Line {n} of a long description." for n in range(20)), "Saves an order."))
 
+    ARROW_BELOW = ("// @functionlens:fn-intake\n/**\n * Makes the intake hook.\n * @param on Whether intake is on.\n */\n"
+                   "export const intake =\n  (on: boolean) =>\n  async () => on;\n")
+
+    def test_an_arrow_starting_below_its_declaration_takes_the_id_and_jsdoc(self):
+        # `export const k =` with the arrow on the next line: the id and the JSDoc sit above
+        # the declaration, which is where the record is anchored.
+        recs = self.records(self.ARROW_BELOW)
+        self.assertEqual((recs["intake"]["source_id"], recs["intake"]["purpose"], recs["intake"]["lineno"]),
+                         ("fn-intake", "Makes the intake hook.", 6))
+
+    @unittest.skipUnless(__import__("importlib").util.find_spec("tree_sitter"), "requires repolens[stack]")
+    def test_tree_sitter_anchors_an_arrow_starting_below_its_declaration_on_the_declaration(self):
+        # Tree-sitter places the function on the arrow's line; the declaration's line is the anchor.
+        recs = self.records(self.ARROW_BELOW + "// @functionlens:fn-get\n/** Serves the list. */\n"
+                            "export const GET = withAuth(\n  async (req: Request) => req,\n);\n",
+                            'javascript_parser = "tree-sitter"\n')
+        self.assertEqual({name: (recs[name]["source_id"], recs[name]["purpose"]) for name in ("intake", "GET")},
+                         {"intake": ("fn-intake", "Makes the intake hook."), "GET": ("fn-get", "Serves the list.")})
+
     def test_drafting_ids_sees_an_existing_id_above_a_long_jsdoc(self):
         from repolens.featuretrace.propose import _has_function_lens_id
         lines = ("// @functionlens:fn-long\n" + self.LONG_DOC + "export function longDoc() {}\n").splitlines()
