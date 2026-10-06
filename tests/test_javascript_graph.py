@@ -116,6 +116,21 @@ class ImportResolutionTests(Repo):
         self.assertNotIn(("main", "parse"), self.edges("CALLS"))
         self.assertNotIn(("main", "format"), self.edges("CALLS"))
 
+    def test_a_bare_name_in_a_module_never_joins_another_modules_function(self):
+        # ES modules share no scope: `fetch`/`resolve` here are a global and a parameter.
+        self.write("lib/a.ts", "export function fetch(){}\nexport function resolve(){}\nexport function helper(){}")
+        self.write("lib/b.ts", "export function resolve(){}")
+        self.write("use.ts", "export async function main(){ await fetch('/x'); new Promise((resolve) => resolve(1)); "
+                             "local(); }\nfunction local(){}")
+        self.write("legacy.js", "function boot(){ helper(); }")  # a classic script shares the global scope
+        self.scan()
+        calls = self.edges("CALLS")
+        self.assertNotIn(("main", "fetch"), calls)
+        self.assertNotIn(("main", "resolve"), calls)
+        self.assertIn(("main", "local"), calls)
+        self.assertIn(("boot", "helper"), calls)
+        self.assertNotIn("AMBIGUOUS_CALL", self.codes())
+
     def test_a_barrel_export_star_and_a_renamed_reexport_resolve(self):
         self.write("lib/a.ts", "export const arrow = () => 1;\nexport function inner(){}")
         self.write("lib/index.ts", 'export * from "./a";\nexport { inner as renamed } from "./a";')

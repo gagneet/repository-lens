@@ -90,7 +90,8 @@ on top of the repository policy.
   4. FastAPI routes/mounts (`fastapi.py`)
   5. call resolution: import bindings, JS barrels and export aliases, Python package
      re-exports, `self`/`this` methods, then name-only fallback; `external:` bindings
-     mean package imports and never name-match
+     mean package imports and never name-match, and a bare JS/TS name in an ES module
+     (`scanner._es_module`) matches only a definition in the same file
   6. declared artifacts, then the `API_PREFIX_ALREADY_RESOLVED` note
   7. `_match_endpoints` (route-shape matching, always `probable`)
   8. endpoint gaps (`API_CALL_WITHOUT_HANDLER`, `API_METHOD_MISMATCH`), structural

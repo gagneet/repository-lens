@@ -1874,6 +1874,14 @@ def _load_routers(state: ScanState, payload: dict, configured: str, pattern_only
             ))
 
 
+_MODULE_SUFFIXES = (".ts", ".tsx", ".mts", ".cts", ".mjs")
+
+
+def _es_module(state: ScanState, path: str) -> bool:
+    """Is `path` a JS/TS module (own scope), not a classic script sharing the global one?"""
+    return path.endswith(_MODULE_SUFFIXES) or bool(state.imports.get(path) or state.js_exports.get(path))
+
+
 def _resolve_calls(state: ScanState) -> None:
     graph = state.graph
     labels: dict[str, dict[str, list[str]]] = defaultdict(lambda: defaultdict(list))
@@ -1965,6 +1973,11 @@ def _resolve_calls(state: ScanState) -> None:
             local = [target for target in targets if graph.nodes[target].path == source_node.path]
             if local and len(parts) == 1:
                 targets = local
+            elif len(parts) == 1 and language != "python" and _es_module(state, source_node.path or ""):
+                # An ES module has no scope shared with other files: a bare name neither
+                # imported nor defined here is a global (`fetch`, `setTimeout`) or a
+                # parameter (`resolve`), never another module's function.
+                continue
         targets = [target for target in targets if target != source]
         if not targets or len(targets) > state.config.max_ambiguous_targets:
             continue

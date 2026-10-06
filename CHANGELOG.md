@@ -463,6 +463,13 @@ repository. `pyproject.toml` still says 0.3.0.
 
 ### Fixed
 
+- A bare call in a JS/TS module (`fetch(…)`, `setTimeout(…)`, a `resolve` parameter) was name-matched
+  to same-named functions in other modules, as `probable` or `AMBIGUOUS_CALL` edges. ES modules share
+  no scope, so a bare name that is neither imported nor defined in the file is now left unlinked
+  (a classic script without imports or exports still name-matches). On a 600-file Next.js monorepo:
+  1302 → 1216 `AMBIGUOUS_CALL`.
+- `INSERT INTO t AS s (cols) …` (an aliased insert, common with `ON CONFLICT … WHERE s.x`) failed the
+  SQL shape gate and was `SQL_NOT_PARSED`; it is now read.
 - `repolens docs coverage` measured no TypeScript or JavaScript unless `[docs] javascript_roots` was
   set, so a TS repository without a `repolens.toml` reported only its few Python files. JS/TS is now
   measured from the root like Python (build output, `node_modules`, tests, `.d.ts` and `.min.js` stay
