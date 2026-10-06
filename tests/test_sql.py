@@ -29,6 +29,7 @@ class LooksLikeSqlTests(unittest.TestCase):
         for text in ("SELECT 1", "select now()", "SELECT * FROM users", "SELECT a.id FROM accounts a JOIN b ON a.x = b.x",
                      "  -- leading comment\n SELECT count(*) FROM t", "(SELECT 1) UNION (SELECT 2)",
                      "INSERT INTO t (a) VALUES ($1)", "INSERT INTO archive SELECT * FROM live",
+                     "insert into app.case_scope as s\n  (org_id, area_key) select org_id, $2 from app.case_party",
                      "UPDATE accounts SET x = 1", "DELETE FROM sessions", "DELETE FROM t WHERE id = ?",
                      "MERGE INTO target t USING s ON true", "TRUNCATE staging", "TRUNCATE TABLE a, b",
                      "COPY audit_log FROM STDIN", "CREATE TABLE x (id int)", "CREATE UNIQUE INDEX CONCURRENTLY ix ON t (a)",

@@ -35,7 +35,7 @@ _SENTENCE_END = re.compile(r"[A-Za-z][?!.]\s*$")
 _OBJECT_KINDS = (r"(?:MATERIALIZED\s+VIEW|FOREIGN\s+TABLE|TABLE|INDEX|VIEW|SCHEMA|FUNCTION|PROCEDURE|POLICY|TRIGGER|"
                  r"TYPE|SEQUENCE|EXTENSION|DOMAIN|ROLE|RULE|AGGREGATE|DATABASE|PUBLICATION|SUBSCRIPTION)")
 _SQL_SHAPES = [re.compile(pattern, re.I | re.S) for pattern in (
-    rf"^INSERT\s+INTO\s+{_IDENT}\s*(?:\(|(?:AS\s+{_NAME}\s+)?(?:VALUES|SELECT|DEFAULT\s+VALUES|OVERRIDING|WITH)\b)",
+    rf"^INSERT\s+INTO\s+{_IDENT}\s*(?:AS\s+{_NAME}\s*)?(?:\(|(?:VALUES|SELECT|DEFAULT\s+VALUES|OVERRIDING|WITH)\b)",
     rf"^UPDATE\s+(?:ONLY\s+)?{_IDENT}(?:\s+(?:AS\s+)?{_NAME})?\s+SET\b",
     rf"^DELETE\s+FROM\s+(?:ONLY\s+)?{_IDENT}(?:\s|;|$)",
     rf"^MERGE\s+INTO\s+{_IDENT}",
