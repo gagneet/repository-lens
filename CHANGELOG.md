@@ -529,7 +529,8 @@ repository. `pyproject.toml` still says 0.3.0.
   `repolens docs coverage --update-baseline` once after upgrading, or set `[docs] javascript_roots = []`
   (and a `javascript_kinds` without `"method"`) to keep the old count.
 - **Scanner revision 11**: PostgreSQL policies gain `reads in policy` table edges and `$$` routine
-  bodies kept as text gain their tables; expect far fewer `SQL_UNSUPPORTED_STATEMENT` infos.
+  bodies kept as text gain their tables; expect far fewer `SQL_UNSUPPORTED_STATEMENT` infos, and bare JS/TS
+  calls in ES modules lose their cross-module name-only `CALLS` edges.
 - **Scanner revision 10** (9 for the field-evaluation fixes, 10 for route parameter names, `DEFINES`
   and SQL foreign keys): cached impact indexes are rebuilt. Revision 10 adds `DEFINES` and
   `REFERENCES` edges. From revision 9, expect fewer `CALLS_API` links and stores:
