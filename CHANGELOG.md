@@ -463,6 +463,15 @@ repository. `pyproject.toml` still says 0.3.0.
 
 ### Fixed
 
+- On Python 3.13 and later, identical Python function bodies in different files were no
+  longer reported (`STRUCTURALLY_SIMILAR` edges, `SIMILAR_FUNCTION_BODY`). Python 3.13
+  changed `ast.dump` to leave out empty fields by default, so a short body's dump fell under
+  the 110-character floor and the fingerprint changed. `python_scan` now passes
+  `show_empty=True` on 3.13+, so the dump, the floor and the fingerprints match 3.11 and 3.12.
+  `SCANNER_REVISION` is 12. Found running the suite on Python 3.14.4 (Ubuntu 26.04), where
+  `test_identical_python_bodies_are_candidates_not_verified_duplicates` and
+  `test_a_pass_that_crashes_is_reported_and_the_later_passes_still_run` failed.
+
 - Function Lens did not attach the `@functionlens:` id or read the JSDoc of an arrow function that
   starts on the line after its declaration (`export const k =` then `(x) => …`, or
   `export const GET = withAuth(` then the arrow) under `javascript_parser = "tree-sitter"`, which
@@ -555,6 +564,14 @@ repository. `pyproject.toml` still says 0.3.0.
 
 ### Upgrade notes
 
+- After an operating-system upgrade changes the system Python (for example Ubuntu 26.04,
+  3.12 to 3.14), rebuild any virtual environment made with `python3 -m venv`. The venv's
+  `python3` links to the system interpreter, and the new interpreter does not read the old
+  `lib/python3.12/site-packages`, so `repolens` fails with `ModuleNotFoundError: No module
+  named 'repolens'`. Rebuild with `python3.14 -m venv --clear .venv` and reinstall the extras
+  (see `docs/installation.md`, "After a Python upgrade").
+- The impact cache (`.impact-tracer/index.json`) is rebuilt once, because `SCANNER_REVISION`
+  changed.
 - Regenerate the Function Lens digest and the `docs coverage` baseline after upgrading if the
   checkout has untracked gitignored source under the configured roots (build output, a copied
   bundle): those files are no longer indexed or measured, so the digest changes and the baseline
