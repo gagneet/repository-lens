@@ -125,6 +125,9 @@ class PythonVisitor(ast.NodeVisitor):
                 ast.Module(body=node.body, type_ignores=[]),
                 annotate_fields=True,
                 include_attributes=False,
+                # 3.13 stopped printing empty fields by default; keep the 3.11/3.12 dump so the
+                # 110-character floor and the fingerprints are the same on every version.
+                **({"show_empty": True} if sys.version_info >= (3, 13) else {}),
             )
             if len(body_dump) >= 110:
                 metadata["body_fingerprint"] = hashlib.sha256(body_dump.encode("utf-8")).hexdigest()

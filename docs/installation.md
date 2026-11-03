@@ -136,6 +136,25 @@ walks the installed package's files on disk to stamp every output with a hash of
 that produced it, so a frozen build would have to keep those files readable anyway. It is
 worth doing only for a machine with no Python 3.11.
 
+## After a Python upgrade
+
+A virtual environment belongs to one minor version of Python. `python3 -m venv` links the
+venv's `python3` to the system interpreter, so an operating-system upgrade that replaces it
+(Ubuntu 26.04 moves 3.12 to 3.14) leaves the venv running the new interpreter against the old
+`lib/python3.X/site-packages`, which it does not read. `repolens` then fails with
+`ModuleNotFoundError: No module named 'repolens'`. Make the venv again for the new version:
+
+```bash
+python3.14 -m venv --clear .venv
+.venv/bin/pip install -e '.[yaml,stack,api,test]' ruff
+.venv/bin/python -m unittest discover -s tests -q
+```
+
+A pipx or `uv tool` install is the same: `pipx reinstall-all` or `uv tool install --reinstall` with the same arguments.
+Repository Lens runs on 3.11 to 3.14. On 3.14 the suite prints one
+`StarletteDeprecationWarning` from FastAPI's test client (Starlette wants `httpx2`). It comes
+from the dependencies, does not affect a run, and is left until FastAPI moves.
+
 ## Bootstrap a target repository
 
 `init` detects common source/test/migration directories and writes a starter
